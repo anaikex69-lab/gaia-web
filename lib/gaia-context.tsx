@@ -10,11 +10,18 @@ export type UsageStats = {
 }
 
 export type GaiaSettings = {
-  model: "haiku" | "sonnet" | "opus"
+  model: "haiku" | "sonnet" | "opus" | "fable"
   temperature: number
   mode: "casual" | "analysis" | "code" | "creative"
   language: string
   assistantName: string
+}
+
+export type Chat = {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
 }
 
 type GaiaContextType = {
@@ -22,15 +29,19 @@ type GaiaContextType = {
   settings: GaiaSettings
   updateSettings: (s: Partial<GaiaSettings>) => void
 
-  // Usage - sesión actual
+  // Usage
   sessionUsage: { input: number; output: number; cost: number; messages: number }
   addUsage: (input: number, output: number, cost: number) => void
 
-  // Usage - historial total (desde Supabase)
-  totalUsage: { input: number; output: number; cost: number; messages: number } | null
-  setTotalUsage: (t: { input: number; output: number; cost: number; messages: number }) => void
+  // Chats
+  chats: Chat[]
+  setChats: (chats: Chat[]) => void
+  activeChatId: string | null
+  setActiveChatId: (id: string | null) => void
+  addChat: (chat: Chat) => void
+  updateChatTitle: (id: string, title: string) => void
 
-  // Badge de chats
+  // Badge
   chatCount: number
   setChatCount: (n: number) => void
 }
@@ -47,7 +58,8 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
   })
 
   const [sessionUsage, setSessionUsage] = useState({ input: 0, output: 0, cost: 0, messages: 0 })
-  const [totalUsage, setTotalUsage] = useState<{ input: number; output: number; cost: number; messages: number } | null>(null)
+  const [chats, setChats] = useState<Chat[]>([])
+  const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [chatCount, setChatCount] = useState(0)
 
   const updateSettings = useCallback((s: Partial<GaiaSettings>) => {
@@ -63,11 +75,21 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const addChat = useCallback((chat: Chat) => {
+    setChats((prev) => [chat, ...prev])
+  }, [])
+
+  const updateChatTitle = useCallback((id: string, title: string) => {
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)))
+  }, [])
+
   return (
     <GaiaContext.Provider value={{
       settings, updateSettings,
       sessionUsage, addUsage,
-      totalUsage, setTotalUsage,
+      chats, setChats,
+      activeChatId, setActiveChatId,
+      addChat, updateChatTitle,
       chatCount, setChatCount,
     }}>
       {children}

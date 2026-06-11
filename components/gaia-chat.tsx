@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
@@ -11,25 +11,57 @@ type Message = {
   content: string
 }
 
-type GaiaChatProps = {
-  micOn: boolean
-}
+export function GaiaChat({ micOn }: { micOn: boolean }) {
+  const { settings, sessionUsage, addUsage, setChatCount, activeChatId, setActiveChatId, addChat, updateChatTitle } = useGaia()
 
-export function GaiaChat({ micOn }: GaiaChatProps) {
-  const { settings, sessionUsage, addUsage, setChatCount } = useGaia()
-
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Luis. Ya era hora.\n\nSoy Gaia. Escríbeme.",
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isFirstMessage, setIsFirstMessage] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Crear nuevo chat al montar
+  const createNewChat = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat", { method: "PUT" })
+      const data = await res.json()
+      if (data.chat) {
+        setActiveChatId(data.chat.id)
+        addChat(data.chat)
+        setMessages([{ id: "welcome", role: "assistant", content: "Luis. Ya era hora.\n\nSoy Gaia. Escríbeme." }])
+        setIsFirstMessage(true)
+      }
+    } catch (e) {
+      console.error("Error creating chat:", e)
+    }
+  }, [setActiveChatId, addChat])
+
+  // Cargar historial de un chat existente
+  const loadChatHistory = useCallback(async (chatId: string) => {
+    try {
+      const res = await fetch(`/api/messages?chatId=${chatId}`)
+      const data = await res.json()
+      if (data.messages && data.messages.length > 0) {
+        setMessages(data.messages.map((m: any) => ({ id: m.id, role: m.role, content: m.content })))
+        setIsFirstMessage(false)
+      } else {
+        setMessages([{ id: "welcome", role: "assistant", content: "Luis. Ya era hora.\n\nSoy Gaia. Escríbeme." }])
+        setIsFirstMessage(true)
+      }
+    } catch (e) {
+      console.error("Error loading history:", e)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeChatId) {
+      loadChatHistory(activeChatId)
+    } else {
+      createNewChat()
+    }
+  }, [activeChatId])
 
   useEffect(() => {
     const userMsgs = messages.filter((m) => m.role === "user").length
@@ -49,7 +81,7 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
 
   async function send(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || loading) return
+    if (!trimmed || loading || !activeChatId) return
 
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: trimmed }
     setMessages((prev) => [...prev, userMsg])
@@ -61,26 +93,17 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          model: settings.model,
-          temperature: settings.temperature,
-        }),
+        body: JSON.stringify({ message: trimmed, model: settings.model, temperature: settings.temperature, chatId: activeChatId, isFirstMessage }),
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Error desconocido")
 
-      const assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.reply,
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: data.reply }])
 
-      if (data.usage) {
-        addUsage(data.usage.inputTokens, data.usage.outputTokens, parseFloat(data.usage.cost))
-      }
+      if (data.chatTitle) updateChatTitle(activeChatId, data.chatTitle)
+      if (isFirstMessage) setIsFirstMessage(false)
+      if (data.usage) addUsage(data.usage.inputTokens, data.usage.outputTokens, parseFloat(data.usage.cost))
     } catch (err: any) {
       setError(err.message || "No se pudo conectar con Gaia.")
       setMessages((prev) => prev.filter((m) => m.id !== userMsg.id))
@@ -90,12 +113,7 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    send(input)
-  }
-
-  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" }
+  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", fable: "Fable 5" }
   const showStats = sessionUsage.messages > 0
 
   return (
@@ -106,13 +124,11 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
             <div key={message.id} className={cn("flex gap-3", message.role === "user" ? "flex-row-reverse" : "flex-row")}>
               {message.role === "assistant" && (
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Sparkle className="size-4" aria-hidden="true" />
+                  <Sparkle className="size-4" />
                 </div>
               )}
-              <div className={cn(
-                "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-card text-card-foreground",
-              )}>
+              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-card text-card-foreground")}>
                 {message.content}
               </div>
             </div>
@@ -121,7 +137,7 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
           {loading && (
             <div className="flex gap-3">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <Sparkle className="size-4 animate-pulse" aria-hidden="true" />
+                <Sparkle className="size-4 animate-pulse" />
               </div>
               <div className="rounded-2xl bg-card px-4 py-3 text-sm text-muted-foreground">
                 <span className="inline-flex gap-1">
@@ -158,33 +174,29 @@ export function GaiaChat({ micOn }: GaiaChatProps) {
 
       <div className="px-4 pb-5 pt-2 sm:px-6">
         <div className="mx-auto w-full max-w-3xl">
-          <form onSubmit={handleSubmit} className="rounded-2xl border border-border bg-card p-2 shadow-2xl shadow-black/20 focus-within:border-primary/50">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+          <form onSubmit={(e) => { e.preventDefault(); send(input) }}
+            className="rounded-2xl border border-border bg-card p-2 shadow-2xl shadow-black/20 focus-within:border-primary/50">
+            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input) } }}
-              rows={1}
-              placeholder="Message Gaia…"
-              aria-label="Message Gaia"
-              disabled={loading}
-              className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
-            />
+              rows={1} placeholder="Message Gaia…" disabled={loading}
+              className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50" />
             <div className="flex items-center justify-between px-1 pt-1">
               <div className="flex items-center gap-1">
-                <button type="button" aria-label="Add attachment" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-                  <Paperclip className="size-[18px]" aria-hidden="true" />
+                <button type="button" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <Paperclip className="size-[18px]" />
                 </button>
-                <button type="button" aria-label="New tool" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-                  <Plus className="size-[18px]" aria-hidden="true" />
+                <button type="button" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <Plus className="size-[18px]" />
                 </button>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" aria-label="Dictate" className={cn("flex size-9 items-center justify-center rounded-lg transition-colors", micOn ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
-                  <Mic className="size-[18px]" aria-hidden="true" />
+                <button type="button" className={cn("flex size-9 items-center justify-center rounded-lg transition-colors",
+                  micOn ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                  <Mic className="size-[18px]" />
                 </button>
-                <button type="submit" aria-label="Send message" disabled={!input.trim() || loading} className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40">
-                  <ArrowUp className="size-[18px]" aria-hidden="true" />
+                <button type="submit" disabled={!input.trim() || loading}
+                  className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40">
+                  <ArrowUp className="size-[18px]" />
                 </button>
               </div>
             </div>
