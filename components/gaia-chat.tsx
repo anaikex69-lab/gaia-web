@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle } from "lucide-react"
+import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle, MicOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
 
@@ -9,6 +9,14 @@ type Message = {
   id: string
   role: "user" | "assistant"
   content: string
+}
+
+// Web Speech API types
+declare global {
+  interface Window {
+    SpeechRecognition: any
+    webkitSpeechRecognition: any
+  }
 }
 
 export function GaiaChat({ micOn }: { micOn: boolean }) {
@@ -19,8 +27,78 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isFirstMessage, setIsFirstMessage] = useState(true)
+
+  // Voz
+  const [listening, setListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Detectar soporte de voz
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
+      setVoiceSupported(true)
+    }
+  }, [])
+
+  // Inicializar reconocimiento de voz
+  const initRecognition = useCallback(() => {
+    if (!voiceSupported) return null
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    recognition.lang = settings.language === "es" ? "es-MX" : "en-US"
+    recognition.continuous = false
+    recognition.interimResults = true
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join("")
+      setInput(transcript)
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech error:", event.error)
+      setListening(false)
+      if (event.error === "not-allowed") {
+        setError("Permiso de micrófono denegado. Actívalo en tu navegador.")
+      }
+    }
+
+    return recognition
+  }, [voiceSupported, settings.language])
+
+  const toggleListening = useCallback(() => {
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+
+    const recognition = initRecognition()
+    if (!recognition) return
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+    setError(null)
+  }, [listening, initRecognition])
+
+  // Si hay texto dictado y se deja de escuchar, enviar automáticamente
+  useEffect(() => {
+    if (!listening && input.trim() && recognitionRef.current) {
+      // pequeño delay para que el usuario vea lo que se transcribió
+      const timer = setTimeout(() => {
+        if (input.trim()) send(input)
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [listening])
 
   // Crear nuevo chat al montar
   const createNewChat = useCallback(async () => {
@@ -38,7 +116,6 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     }
   }, [setActiveChatId, addChat])
 
-  // Cargar historial de un chat existente
   const loadChatHistory = useCallback(async (chatId: string) => {
     try {
       const res = await fetch(`/api/messages?chatId=${chatId}`)
@@ -64,8 +141,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
   }, [activeChatId])
 
   useEffect(() => {
-    const userMsgs = messages.filter((m) => m.role === "user").length
-    setChatCount(userMsgs)
+    setChatCount(messages.filter((m) => m.role === "user").length)
   }, [messages, setChatCount])
 
   useEffect(() => {
@@ -99,7 +175,8 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Error desconocido")
 
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: data.reply }])
+      const reply = data.reply
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: reply }])
 
       if (data.chatTitle) updateChatTitle(activeChatId, data.chatTitle)
       if (isFirstMessage) setIsFirstMessage(false)
@@ -158,6 +235,14 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
         </div>
       </div>
 
+      {/* Indicador de escucha */}
+      {listening && (
+        <div className="flex items-center justify-center gap-2 border-t border-border/50 bg-primary/5 py-2 text-xs text-primary">
+          <span className="size-2 animate-pulse rounded-full bg-primary" />
+          Escuchando... habla ahora
+        </div>
+      )}
+
       {showStats && (
         <div className="border-t border-border/50 bg-card/30 px-4 py-1.5 sm:px-6">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 text-[0.65rem] text-muted-foreground/70">
@@ -178,7 +263,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
             className="rounded-2xl border border-border bg-card p-2 shadow-2xl shadow-black/20 focus-within:border-primary/50">
             <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input) } }}
-              rows={1} placeholder="Message Gaia…" disabled={loading}
+              rows={1} placeholder={listening ? "Dictando..." : "Message Gaia…"} disabled={loading}
               className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50" />
             <div className="flex items-center justify-between px-1 pt-1">
               <div className="flex items-center gap-1">
@@ -190,10 +275,13 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
                 </button>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" className={cn("flex size-9 items-center justify-center rounded-lg transition-colors",
-                  micOn ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
-                  <Mic className="size-[18px]" />
-                </button>
+                {voiceSupported && (
+                  <button type="button" onClick={toggleListening}
+                    className={cn("flex size-9 items-center justify-center rounded-lg transition-colors",
+                      listening ? "bg-primary text-primary-foreground animate-pulse" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                    {listening ? <MicOff className="size-[18px]" /> : <Mic className="size-[18px]" />}
+                  </button>
+                )}
                 <button type="submit" disabled={!input.trim() || loading}
                   className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40">
                   <ArrowUp className="size-[18px]" />
