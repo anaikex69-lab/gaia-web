@@ -161,6 +161,7 @@ const MODELS = [
   { id: "haiku", name: "Claude Haiku", hint: "Rápido y económico" },
   { id: "sonnet", name: "Claude Sonnet", hint: "Equilibrado · recomendado" },
   { id: "opus", name: "Claude Opus", hint: "Máxima capacidad" },
+{ id: "fable", name: "Claude Fable 5", hint: "Frontier · más poderoso" },
 ]
 const RESPONSE_MODES = [
   { id: "casual", label: "Casual" },
