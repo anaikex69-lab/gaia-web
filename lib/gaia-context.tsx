@@ -38,6 +38,8 @@ type GaiaContextType = {
   setChats: (chats: Chat[]) => void
   activeChatId: string | null
   setActiveChatId: (id: string | null) => void
+  chatsLoaded: boolean
+  setChatsLoaded: (v: boolean) => void
   addChat: (chat: Chat) => void
   updateChatTitle: (id: string, title: string) => void
 
@@ -59,8 +61,12 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
 
   const [sessionUsage, setSessionUsage] = useState({ input: 0, output: 0, cost: 0, messages: 0 })
   const [chats, setChats] = useState<Chat[]>([])
-  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [activeChatId, setActiveChatId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("gaia-active-chat")
+    return null
+  })
   const [chatCount, setChatCount] = useState(0)
+  const [chatsLoaded, setChatsLoaded] = useState(false)
 
   const updateSettings = useCallback((s: Partial<GaiaSettings>) => {
     setSettings((prev) => ({ ...prev, ...s }))
@@ -83,14 +89,23 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
     setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)))
   }, [])
 
+  const setActiveChatIdPersisted = useCallback((id: string | null) => {
+    setActiveChatId(id)
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem("gaia-active-chat", id)
+      else localStorage.removeItem("gaia-active-chat")
+    }
+  }, [])
+
   return (
     <GaiaContext.Provider value={{
       settings, updateSettings,
       sessionUsage, addUsage,
       chats, setChats,
-      activeChatId, setActiveChatId,
+      activeChatId, setActiveChatId: setActiveChatIdPersisted,
       addChat, updateChatTitle,
       chatCount, setChatCount,
+      chatsLoaded, setChatsLoaded,
     }}>
       {children}
     </GaiaContext.Provider>

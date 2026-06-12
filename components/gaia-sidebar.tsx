@@ -25,7 +25,7 @@ type GaiaSidebarProps = {
 }
 
 export function GaiaSidebar({ active, onSelect, micOn, voiceOn, onToggleMic, onToggleVoice, onNewChat }: GaiaSidebarProps) {
-  const { chatCount, sessionUsage, chats, setChats, activeChatId, setActiveChatId } = useGaia()
+  const { chatCount, sessionUsage, chats, setChats, activeChatId, setActiveChatId, setChatsLoaded } = useGaia()
 
   // Cargar lista de chats al montar
   useEffect(() => {
@@ -33,6 +33,7 @@ export function GaiaSidebar({ active, onSelect, micOn, voiceOn, onToggleMic, onT
       .then((r) => r.json())
       .then((d) => { if (d.chats) setChats(d.chats) })
       .catch(console.error)
+      .finally(() => setChatsLoaded(true))
   }, [])
 
   const sections: NavSection[] = [
@@ -142,9 +143,9 @@ export function GaiaSidebar({ active, onSelect, micOn, voiceOn, onToggleMic, onT
                     <MessageCircle className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="flex-1 truncate text-left text-xs">{chat.title}</span>
                   </button>
-                  <button type="button" onClick={(e) => deleteChat(e, chat.id)}
-                    className="hidden size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive group-hover:flex">
-                    <Trash2 className="size-3" />
+                  <button type="button" onClick={(e) => deleteChat(e, chat.id)} aria-label="Eliminar chat"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/20 hover:text-destructive">
+                    <Trash2 className="size-3.5" />
                   </button>
                 </li>
               ))}
