@@ -89,16 +89,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     setError(null)
   }, [listening, initRecognition])
 
-  // Si hay texto dictado y se deja de escuchar, enviar automáticamente
-  useEffect(() => {
-    if (!listening && input.trim() && recognitionRef.current) {
-      // pequeño delay para que el usuario vea lo que se transcribió
-      const timer = setTimeout(() => {
-        if (input.trim()) send(input)
-      }, 800)
-      return () => clearTimeout(timer)
-    }
-  }, [listening])
+  // Sin auto-envío — el usuario decide cuándo mandar
 
   // Crear nuevo chat al montar
   const createNewChat = useCallback(async () => {
