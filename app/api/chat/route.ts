@@ -143,7 +143,7 @@ const generateChatTitle = async (message: string): Promise<string> => {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { message, model = "sonnet", temperature = 0.7, chatId, isFirstMessage } = body
+    const { message, model = "sonnet", temperature = 0.7, chatId, isFirstMessage, fileContext, imageBase64, imageMediaType } = body
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Mensaje vacío" }, { status: 400 })
@@ -179,12 +179,27 @@ export async function POST(req: NextRequest) {
     if (profile) dynamicSection += `\n\nPerfil de Luis:\n${profile}`
 
     const messages = buildMessages(recentHistory)
+    const finalUserContent = fileContext
+      ? `${message}\n\n[Contenido del archivo adjunto]:\n${fileContext}`
+      : message
+
+    // Si hay imagen, construir contenido multimodal
+    let userContent: any = finalUserContent
+    if (imageBase64 && imageMediaType) {
+      userContent = [
+        { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
+        { type: "text", text: finalUserContent },
+      ]
+    }
+
     if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
-      messages.push({ role: "user", content: message })
+      messages.push({ role: "user", content: userContent })
+    } else {
+      messages[messages.length - 1].content = userContent
     }
 
     const isShort = message.length < 80 && !/explica|describe|escribe|redacta|lista|resume|analiza|ayúdame|ayudame/.test(message.toLowerCase())
-    const maxTokens = isShort ? 300 : 500
+    const maxTokens = (fileContext || imageBase64) ? 700 : (isShort ? 300 : 500)
 
     const systemBlocksForAPI = [
       { type: "text" as const, text: GAIA_SYSTEM_PROMPT, cache_control: { type: "ephemeral" as const } },

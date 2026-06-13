@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle, MicOff } from "lucide-react"
+import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle, MicOff, FileText, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
 
@@ -20,7 +20,7 @@ declare global {
 }
 
 export function GaiaChat({ micOn }: { micOn: boolean }) {
-  const { settings, sessionUsage, addUsage, setChatCount, activeChatId, setActiveChatId, addChat, updateChatTitle } = useGaia()
+  const { settings, sessionUsage, addUsage, setChatCount, activeChatId, setActiveChatId, addChat, updateChatTitle, chatsLoaded } = useGaia()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -35,6 +35,17 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Archivo adjunto
+  const [attachedFile, setAttachedFile] = useState<{
+    name: string
+    content?: string
+    isImage?: boolean
+    imageBase64?: string
+    imageMediaType?: string
+  } | null>(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
 
   // Detectar soporte de voz
   useEffect(() => {
@@ -126,10 +137,11 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
   useEffect(() => {
     if (activeChatId) {
       loadChatHistory(activeChatId)
-    } else {
+    } else if (chatsLoaded) {
+      // Solo crear chat nuevo cuando ya sabemos que no hay ninguno guardado
       createNewChat()
     }
-  }, [activeChatId])
+  }, [activeChatId, chatsLoaded])
 
   useEffect(() => {
     setChatCount(messages.filter((m) => m.role === "user").length)
@@ -146,21 +158,65 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px"
   }, [input])
 
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingFile(true)
+    setError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch("/api/upload", { method: "POST", body: formData })
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error || "Error subiendo archivo")
+
+      if (data.isImage) {
+        setAttachedFile({ name: data.fileName, isImage: true, imageBase64: data.imageBase64, imageMediaType: data.imageMediaType })
+      } else {
+        setAttachedFile({ name: data.fileName, content: data.extractedText })
+      }
+    } catch (err: any) {
+      setError(err.message || "No se pudo procesar el archivo")
+    } finally {
+      setUploadingFile(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
   async function send(text: string) {
-    const trimmed = text.trim()
+    const defaultPrompt = attachedFile?.isImage ? "¿Qué ves en esta imagen?" : "Analiza este archivo y dime qué contiene."
+    const trimmed = text.trim() || (attachedFile ? defaultPrompt : "")
     if (!trimmed || loading || !activeChatId) return
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: trimmed }
+    const fileLabel = attachedFile?.isImage ? "🖼️" : "📎"
+    const displayContent = attachedFile ? `${trimmed}\n\n${fileLabel} ${attachedFile.name}` : trimmed
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: displayContent }
     setMessages((prev) => [...prev, userMsg])
     setInput("")
     setLoading(true)
     setError(null)
 
+    const currentFile = attachedFile
+    setAttachedFile(null)
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, model: settings.model, temperature: settings.temperature, chatId: activeChatId, isFirstMessage }),
+        body: JSON.stringify({
+          message: trimmed,
+          model: settings.model,
+          temperature: settings.temperature,
+          chatId: activeChatId,
+          isFirstMessage,
+          fileContext: currentFile?.content,
+          imageBase64: currentFile?.imageBase64,
+          imageMediaType: currentFile?.imageMediaType,
+        }),
       })
 
       const data = await res.json()
@@ -252,13 +308,37 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
         <div className="mx-auto w-full max-w-3xl">
           <form onSubmit={(e) => { e.preventDefault(); send(input) }}
             className="rounded-2xl border border-border bg-card p-2 shadow-2xl shadow-black/20 focus-within:border-primary/50">
+            {attachedFile && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs">
+                {attachedFile.isImage && attachedFile.imageBase64 ? (
+                  <img src={`data:${attachedFile.imageMediaType};base64,${attachedFile.imageBase64}`} alt={attachedFile.name}
+                    className="size-8 shrink-0 rounded object-cover" />
+                ) : (
+                  <FileText className="size-4 shrink-0 text-primary" />
+                )}
+                <span className="flex-1 truncate text-foreground">{attachedFile.name}</span>
+                <button type="button" onClick={() => setAttachedFile(null)} aria-label="Quitar archivo"
+                  className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-destructive">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
+            {uploadingFile && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                <Sparkle className="size-4 animate-pulse text-primary" />
+                Leyendo archivo...
+              </div>
+            )}
             <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input) } }}
               rows={1} placeholder={listening ? "Dictando..." : "Message Gaia…"} disabled={loading}
               className="max-h-40 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50" />
             <div className="flex items-center justify-between px-1 pt-1">
               <div className="flex items-center gap-1">
-                <button type="button" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
+                <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden"
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.csv,.md,.json,image/png,image/jpeg,image/jpg,image/webp" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
+                  className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40">
                   <Paperclip className="size-[18px]" />
                 </button>
                 <button type="button" className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -273,7 +353,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
                     {listening ? <MicOff className="size-[18px]" /> : <Mic className="size-[18px]" />}
                   </button>
                 )}
-                <button type="submit" disabled={!input.trim() || loading}
+                <button type="submit" disabled={(!input.trim() && !attachedFile) || loading}
                   className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40">
                   <ArrowUp className="size-[18px]" />
                 </button>
