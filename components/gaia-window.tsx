@@ -1,7 +1,7 @@
 "use client"
 
 import type { LucideIcon } from "lucide-react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Minus, X, Calendar, NotebookPen, ListTodo, Mail,
   GitCompareArrows, BookOpen, Telescope, Images, Brain,
@@ -125,8 +125,16 @@ function StatCard({ label, value, icon: Icon, accent }: UsageStat) {
 
 // ── USAGE CONTENT (datos reales del contexto) ──
 function UsageContent() {
-  const { sessionUsage } = useGaia()
+  const { sessionUsage, totalUsage, setTotalUsage } = useGaia()
   const sessionTokens = sessionUsage.input + sessionUsage.output
+  const totalTokens = totalUsage.input + totalUsage.output
+
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((d) => setTotalUsage({ input: d.totalInputTokens, output: d.totalOutputTokens, cost: d.totalCost }))
+      .catch(console.error)
+  }, [])
 
   return (
     <div className="flex flex-col gap-6">
@@ -149,6 +157,17 @@ function UsageContent() {
         )}
       </section>
 
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-foreground">Total acumulado</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Tokens entrada" value={formatNumber(totalUsage.input)} icon={ArrowDownToLine} />
+          <StatCard label="Tokens salida" value={formatNumber(totalUsage.output)} icon={ArrowUpFromLine} />
+          <StatCard label="Tokens totales" value={formatNumber(totalTokens)} icon={Sigma} />
+          <StatCard label="Costo total" value={formatUsd(totalUsage.cost)} icon={DollarSign} accent />
+        </div>
+        <p className="text-[0.65rem] text-muted-foreground">Suma de todas las conversaciones desde la web, persistente.</p>
+      </section>
+
       <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
         Los costos son una estimación. Precio: Haiku $0.80/$4.00 · Sonnet $3.00/$15.00 por millón de tokens.
       </p>
@@ -161,7 +180,6 @@ const MODELS = [
   { id: "haiku", name: "Claude Haiku", hint: "Rápido y económico" },
   { id: "sonnet", name: "Claude Sonnet", hint: "Equilibrado · recomendado" },
   { id: "opus", name: "Claude Opus", hint: "Máxima capacidad" },
-{ id: "fable", name: "Claude Fable 5", hint: "Frontier · más poderoso" },
 ]
 const RESPONSE_MODES = [
   { id: "casual", label: "Casual" },

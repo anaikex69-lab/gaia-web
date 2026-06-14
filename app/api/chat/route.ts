@@ -231,6 +231,19 @@ export async function POST(req: NextRequest) {
 
     console.log(`[GAIA-WEB] ${inputTokens}in/${outputTokens}out | $${cost} | ${category} | ${selectedModel}`)
 
+    // Acumular tokens totales en Supabase
+    try {
+      const { data: current } = await supabase.from("usage_totals").select("*").eq("id", 1).single()
+      await supabase.from("usage_totals").update({
+        total_input_tokens: (current?.total_input_tokens || 0) + inputTokens,
+        total_output_tokens: (current?.total_output_tokens || 0) + outputTokens,
+        total_cost: parseFloat(current?.total_cost || 0) + parseFloat(cost),
+        updated_at: new Date().toISOString(),
+      }).eq("id", 1)
+    } catch (e) {
+      console.error("Error updating usage totals:", e)
+    }
+
     await saveMessage("assistant", reply, chatId)
 
     return NextResponse.json({

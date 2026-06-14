@@ -33,6 +33,9 @@ type GaiaContextType = {
   sessionUsage: { input: number; output: number; cost: number; messages: number }
   addUsage: (input: number, output: number, cost: number) => void
 
+  totalUsage: { input: number; output: number; cost: number }
+  setTotalUsage: (u: { input: number; output: number; cost: number }) => void
+
   // Chats
   chats: Chat[]
   setChats: (chats: Chat[]) => void
@@ -60,6 +63,7 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
   })
 
   const [sessionUsage, setSessionUsage] = useState({ input: 0, output: 0, cost: 0, messages: 0 })
+  const [totalUsage, setTotalUsage] = useState({ input: 0, output: 0, cost: 0 })
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(() => {
     if (typeof window !== "undefined") return localStorage.getItem("gaia-active-chat")
@@ -101,6 +105,7 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
     <GaiaContext.Provider value={{
       settings, updateSettings,
       sessionUsage, addUsage,
+      totalUsage, setTotalUsage,
       chats, setChats,
       activeChatId, setActiveChatId: setActiveChatIdPersisted,
       addChat, updateChatTitle,
