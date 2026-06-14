@@ -27,7 +27,14 @@ MEMORIA ACTIVA:
 - Guarda información importante al final de tu respuesta:
   GUARDAR: clave|valor
 - Solo info NUEVA. Nunca en preguntas técnicas o conversación casual.
-- Formato exacto: GUARDAR: clave|valor`
+- Formato exacto: GUARDAR: clave|valor
+
+NOTAS:
+- Si Luis pide crear/guardar una nota, al final de tu respuesta escribe:
+  NOTA: materia|título|contenido
+- materia puede ser "General" si no especifica.
+- Solo cuando explícitamente pida guardar algo como nota.
+- Formato exacto: NOTA: materia|título|contenido`
 
 const saveMessage = async (role: string, content: string, chatId: string) => {
   try {
@@ -56,6 +63,17 @@ const extractAndSaveMemory = async (text: string, category = "personal") => {
       const parts = line.replace("GUARDAR:", "").trim().split("|")
       if (parts.length === 2)
         await saveToProfileCategories(parts[0].trim(), parts[1].trim(), category)
+    } else if (line.trim().startsWith("NOTA:")) {
+      const parts = line.replace("NOTA:", "").trim().split("|")
+      if (parts.length === 3) {
+        try {
+          await supabase.from("notes").insert({
+            subject: parts[0].trim(),
+            title: parts[1].trim(),
+            content: parts[2].trim(),
+          })
+        } catch (e) { console.error("Error saving note:", e) }
+      }
     } else {
       cleaned.push(line)
     }
@@ -177,6 +195,27 @@ export async function POST(req: NextRequest) {
       })} (hora de Guadalajara)`
     }
     if (profile) dynamicSection += `\n\nPerfil de Luis:\n${profile}`
+
+    // Leer notas si las menciona
+    const needsNotes = /nota|apunte|escribí|guardé|tengo en notas|mis notas|materia|apuntes/.test(message.toLowerCase())
+    if (needsNotes) {
+      try {
+        const { data: notesData } = await supabase
+          .from("notes")
+          .select("subject, title, content, updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(20)
+        if (notesData && notesData.length > 0) {
+          const notesText = notesData.map((n) =>
+            `[${n.subject}] ${n.title}: ${n.content?.slice(0, 300) || "(vacío)"}`
+          ).join("\n")
+          dynamicSection += `\n\nNotas de Luis:\n${notesText}`
+        }
+      } catch (e) { console.error("Error fetching notes:", e) }
+    }
+
+    // Detectar si Gaia debe crear una nota
+    const wantsNote = /guarda (esto|eso|esta nota|esa nota)|crea (una )?nota|añade (una )?nota|agrega (una )?nota/.test(message.toLowerCase())
 
     const messages = buildMessages(recentHistory)
     const finalUserContent = fileContext

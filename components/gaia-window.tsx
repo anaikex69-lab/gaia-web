@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
+import { NotesPanel } from "@/components/notes-panel"
 
 export type WindowMeta = { id: string; label: string; icon: LucideIcon }
 
@@ -94,7 +95,7 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {state.id === "usage" ? <UsageContent /> : <SettingsContent />}
+        {state.id === "usage" ? <UsageContent /> : state.id === "notes" ? <NotesContent /> : <SettingsContent />}
       </div>
     </div>
   )
@@ -124,6 +125,10 @@ function StatCard({ label, value, icon: Icon, accent }: UsageStat) {
 }
 
 // ── USAGE CONTENT (datos reales del contexto) ──
+function NotesContent() {
+  return <NotesPanel />
+}
+
 function UsageContent() {
   const { sessionUsage, totalUsage, setTotalUsage } = useGaia()
   const sessionTokens = sessionUsage.input + sessionUsage.output

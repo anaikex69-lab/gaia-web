@@ -8,7 +8,7 @@ import { GaiaWindow, ComingSoonOverlay, WINDOW_REGISTRY, type WindowState } from
 import { GaiaProvider, useGaia } from "@/lib/gaia-context"
 import { cn } from "@/lib/utils"
 
-const WINDOW_TOOLS = new Set(["settings", "usage"])
+const WINDOW_TOOLS = new Set(["settings", "usage", "notes"])
 
 function GaiaApp() {
   const { settings, setActiveChatId, addChat } = useGaia()
