@@ -1,17 +1,18 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Menu, X, PanelLeft } from "lucide-react"
 import { GaiaSidebar } from "@/components/gaia-sidebar"
 import { GaiaChat } from "@/components/gaia-chat"
 import { GaiaWindow, ComingSoonOverlay, WINDOW_REGISTRY, type WindowState } from "@/components/gaia-window"
 import { GaiaProvider, useGaia } from "@/lib/gaia-context"
+import { LoginScreen } from "@/components/login-screen"
 import { cn } from "@/lib/utils"
 
-const WINDOW_TOOLS = new Set(["settings", "usage", "notes", "calendar"])
+const WINDOW_TOOLS = new Set(["settings", "usage", "notes", "calendar", "tasks"])
 
 function GaiaApp() {
-  const { settings, setActiveChatId, addChat } = useGaia()
+  const { settings, updateSettings, setActiveChatId, addChat } = useGaia()
   const [active, setActive] = useState("chats")
   const [micOn, setMicOn] = useState(false)
   const [voiceOn, setVoiceOn] = useState(true)
@@ -19,6 +20,25 @@ function GaiaApp() {
   const [windows, setWindows] = useState<WindowState[]>([])
   const [topZ, setTopZ] = useState(10)
   const [comingSoon, setComingSoon] = useState<string | null>(null)
+
+  // Cargar settings desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.settings && Object.keys(d.settings).length > 0) {
+          const s = d.settings
+          updateSettings({
+            model: s.model || "sonnet",
+            temperature: parseFloat(s.temperature || "0.7"),
+            mode: s.mode || "casual",
+            language: s.language || "es",
+            assistantName: s.assistantName || "Gaia",
+          })
+        }
+      })
+      .catch(console.error)
+  }, [])
 
   const openWindow = useCallback((id: string) => {
     setWindows((prev) => {
@@ -52,9 +72,7 @@ function GaiaApp() {
         setActive("chats")
         setMobileOpen(false)
       }
-    } catch (e) {
-      console.error("Error creating chat:", e)
-    }
+    } catch (e) { console.error("Error creating chat:", e) }
   }
 
   function handleSelect(id: string) {
@@ -63,6 +81,18 @@ function GaiaApp() {
     if (id === "chats" || id === "new-chat") return
     if (WINDOW_TOOLS.has(id)) { openWindow(id) } else { setComingSoon(id) }
   }
+
+  // Guardar settings en Supabase cuando cambian
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings }),
+      }).catch(console.error)
+    }, 1000)
+    return () => clearTimeout(timeout)
+  }, [settings])
 
   const minimized = windows.filter((w) => w.minimized)
 
@@ -152,5 +182,20 @@ function GaiaApp() {
 }
 
 export default function Page() {
-  return <GaiaProvider><GaiaApp /></GaiaProvider>
+  const [authed, setAuthed] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem("gaia-auth-token")
+    setAuthed(!!token)
+  }, [])
+
+  if (authed === null) return null // loading
+
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />
+
+  return (
+    <GaiaProvider>
+      <GaiaApp />
+    </GaiaProvider>
+  )
 }

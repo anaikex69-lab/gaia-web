@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
 import { NotesPanel } from "@/components/notes-panel"
 import { SchedulePanel } from "@/components/schedule-panel"
+import { CalendarPanel } from "@/components/calendar-panel"
+import { TasksPanel } from "@/components/tasks-panel"
 
 export type WindowMeta = { id: string; label: string; icon: LucideIcon }
 
@@ -96,7 +98,11 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {state.id === "usage" ? <UsageContent /> : state.id === "notes" ? <NotesContent /> : state.id === "calendar" ? <ScheduleContent /> : <SettingsContent />}
+        {state.id === "usage" ? <UsageContent /> 
+          : state.id === "notes" ? <NotesContent /> 
+          : state.id === "calendar" ? <CalendarContent />
+          : state.id === "tasks" ? <TasksContent />
+          : <SettingsContent />}
       </div>
     </div>
   )
@@ -126,13 +132,10 @@ function StatCard({ label, value, icon: Icon, accent }: UsageStat) {
 }
 
 // ── USAGE CONTENT (datos reales del contexto) ──
-function NotesContent() {
-  return <NotesPanel />
-}
-
-function ScheduleContent() {
-  return <SchedulePanel />
-}
+function NotesContent() { return <NotesPanel /> }
+function ScheduleContent() { return <SchedulePanel /> }
+function CalendarContent() { return <CalendarPanel /> }
+function TasksContent() { return <TasksPanel /> }
 
 function UsageContent() {
   const { sessionUsage, totalUsage, setTotalUsage } = useGaia()
