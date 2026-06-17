@@ -34,6 +34,7 @@ function GaiaApp() {
             mode: s.mode || "casual",
             language: s.language || "es",
             assistantName: s.assistantName || "Gaia",
+            avatarUrl: s.avatarUrl || "",
           })
         }
       })

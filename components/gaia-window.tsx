@@ -217,6 +217,23 @@ function SettingsContent() {
   const { settings, updateSettings } = useGaia()
   const [showKey, setShowKey] = useState(false)
   const [apiKey, setApiKey] = useState("")
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingAvatar(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/avatar", { method: "POST", body: formData })
+      const data = await res.json()
+      if (data.url) updateSettings({ avatarUrl: data.url })
+    } catch (err) { console.error(err) }
+    setUploadingAvatar(false)
+    if (avatarInputRef.current) avatarInputRef.current.value = ""
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -278,6 +295,33 @@ function SettingsContent() {
           className="min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring">
           {LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
         </select>
+      </div>
+
+      {/* Avatar */}
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Foto de Gaia</span>
+        <div className="flex items-center gap-3">
+          <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-secondary">
+            {settings.avatarUrl ? (
+              <img src={settings.avatarUrl} alt="Avatar" className="size-14 object-cover" />
+            ) : (
+              <span className="text-2xl">🤖</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+            <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50">
+              {uploadingAvatar ? "Subiendo..." : "Subir foto"}
+            </button>
+            {settings.avatarUrl && (
+              <button type="button" onClick={() => updateSettings({ avatarUrl: "" })}
+                className="text-xs text-destructive hover:underline">
+                Quitar foto
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Assistant name */}

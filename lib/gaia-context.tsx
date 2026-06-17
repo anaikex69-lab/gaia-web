@@ -15,6 +15,7 @@ export type GaiaSettings = {
   mode: "casual" | "analysis" | "code" | "creative"
   language: string
   assistantName: string
+  avatarUrl: string
 }
 
 export type Chat = {
@@ -60,6 +61,7 @@ export function GaiaProvider({ children }: { children: ReactNode }) {
     mode: "casual",
     language: "es",
     assistantName: "Gaia",
+    avatarUrl: "",
   })
 
   const [sessionUsage, setSessionUsage] = useState({ input: 0, output: 0, cost: 0, messages: 0 })

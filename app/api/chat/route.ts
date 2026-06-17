@@ -30,13 +30,22 @@ MEMORIA ACTIVA:
   GUARDAR: clave|valor
 - Solo info NUEVA. Nunca en preguntas técnicas o conversación casual.
 - Formato exacto: GUARDAR: clave|valor
+- IMPORTANTE: El comando GUARDAR va en una línea separada al final. NUNCA lo menciones en tu respuesta ni escribas "Guarda:" o "Recuerdo que..." de forma visible. Es un comando silencioso.
 
 NOTAS:
 - Si Luis pide crear/guardar una nota, al final de tu respuesta escribe:
   NOTA: materia|título|contenido
 - materia puede ser "General" si no especifica.
 - Solo cuando explícitamente pida guardar algo como nota.
-- Formato exacto: NOTA: materia|título|contenido`
+- Formato exacto: NOTA: materia|título|contenido
+- IMPORTANTE: El comando NOTA va en una línea separada al final. Es silencioso, no lo menciones.
+
+BORRAR MEMORIA:
+- Si Luis pide olvidar algo, al final escribe:
+  BORRAR: clave
+- Solo cuando Luis explícitamente pida olvidar algo.
+- Formato exacto: BORRAR: clave
+- IMPORTANTE: El comando BORRAR va en una línea separada al final. Es silencioso, no lo menciones.`
 
 const saveMessage = async (role: string, content: string, chatId: string) => {
   try {
@@ -65,6 +74,13 @@ const extractAndSaveMemory = async (text: string, category = "personal") => {
       const parts = line.replace("GUARDAR:", "").trim().split("|")
       if (parts.length === 2)
         await saveToProfileCategories(parts[0].trim(), parts[1].trim(), category)
+    } else if (line.trim().startsWith("BORRAR:")) {
+      const key = line.replace("BORRAR:", "").trim()
+      if (key) {
+        try {
+          await supabase.from("profile_categories").delete().eq("key", key)
+        } catch (e) { console.error("Error borrando memoria:", e) }
+      }
     } else if (line.trim().startsWith("NOTA:")) {
       const parts = line.replace("NOTA:", "").trim().split("|")
       if (parts.length === 3) {

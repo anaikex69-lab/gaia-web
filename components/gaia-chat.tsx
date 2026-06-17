@@ -247,8 +247,12 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
           {messages.map((message) => (
             <div key={message.id} className={cn("flex gap-3", message.role === "user" ? "flex-row-reverse" : "flex-row")}>
               {message.role === "assistant" && (
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Sparkle className="size-4" />
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden">
+                  {settings.avatarUrl ? (
+                    <img src={settings.avatarUrl} alt="Gaia" className="size-8 rounded-lg object-cover" />
+                  ) : (
+                    <Sparkle className="size-4" />
+                  )}
                 </div>
               )}
               <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
@@ -260,8 +264,12 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
 
           {loading && (
             <div className="flex gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <Sparkle className="size-4 animate-pulse" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden">
+                {settings.avatarUrl ? (
+                  <img src={settings.avatarUrl} alt="Gaia" className="size-8 rounded-lg object-cover animate-pulse" />
+                ) : (
+                  <Sparkle className="size-4 animate-pulse" />
+                )}
               </div>
               <div className="rounded-2xl bg-card px-4 py-3 text-sm text-muted-foreground">
                 <span className="inline-flex gap-1">
