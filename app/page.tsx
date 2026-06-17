@@ -9,7 +9,7 @@ import { GaiaProvider, useGaia } from "@/lib/gaia-context"
 import { LoginScreen } from "@/components/login-screen"
 import { cn } from "@/lib/utils"
 
-const WINDOW_TOOLS = new Set(["settings", "usage", "notes", "calendar", "tasks"])
+const WINDOW_TOOLS = new Set(["settings", "usage", "notes", "calendar", "tasks", "memory"])
 
 function GaiaApp() {
   const { settings, updateSettings, setActiveChatId, addChat } = useGaia()

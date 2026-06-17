@@ -14,6 +14,7 @@ import { NotesPanel } from "@/components/notes-panel"
 import { SchedulePanel } from "@/components/schedule-panel"
 import { CalendarPanel } from "@/components/calendar-panel"
 import { TasksPanel } from "@/components/tasks-panel"
+import { MemoryPanel } from "@/components/memory-panel"
 
 export type WindowMeta = { id: string; label: string; icon: LucideIcon }
 
@@ -102,6 +103,7 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
           : state.id === "notes" ? <NotesContent /> 
           : state.id === "calendar" ? <CalendarContent />
           : state.id === "tasks" ? <TasksContent />
+          : state.id === "memory" ? <MemoryContent />
           : <SettingsContent />}
       </div>
     </div>
@@ -136,6 +138,7 @@ function NotesContent() { return <NotesPanel /> }
 function ScheduleContent() { return <SchedulePanel /> }
 function CalendarContent() { return <CalendarPanel /> }
 function TasksContent() { return <TasksPanel /> }
+function MemoryContent() { return <MemoryPanel /> }
 
 function UsageContent() {
   const { sessionUsage, totalUsage, setTotalUsage } = useGaia()

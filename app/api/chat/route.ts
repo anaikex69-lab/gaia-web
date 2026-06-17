@@ -183,11 +183,10 @@ export async function POST(req: NextRequest) {
 
     const category = detectCategory(message)
     const historyLimit = message.length < 10 ? 8 : 12
-    const needsProfile = /recuerda|sabes que|te dije|mis datos|qué sabes|deuda|cuánto debo|pendiente/.test(message.toLowerCase())
 
     const [recentHistory, profile] = await Promise.all([
       getRecentMessages(chatId, historyLimit),
-      needsProfile ? getProfile(category) : Promise.resolve(""),
+      getProfile(category), // Siempre carga el perfil
     ])
 
     const needsDate = /hoy|mañana|fecha|hora|cuándo|cuando|día|dia|semana|tarde|noche/.test(message.toLowerCase())
