@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk"
+import Groq from "groq-sdk"
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_KEY })
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!)
 
 const GAIA_SYSTEM_PROMPT = `Eres Gaia. La asistente personal de Luis.
@@ -139,7 +141,11 @@ const VALID_MODELS: Record<string, string> = {
   sonnet: "claude-sonnet-4-6",
   opus: "claude-sonnet-4-6",
   fable: "claude-fable-5-20260609",
+  llama: "llama-3.1-70b-versatile",
+  llama_fast: "llama-3.1-8b-instant",
 }
+
+const GROQ_MODELS = new Set(["llama", "llama_fast"])
 
 // Genera título automático para el chat basado en el primer mensaje
 const generateChatTitle = async (message: string): Promise<string> => {
@@ -254,19 +260,47 @@ export async function POST(req: NextRequest) {
       await supabase.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId)
     }
 
-    const response = await anthropic.messages.create({
-      model: selectedModel,
-      max_tokens: maxTokens,
-      system: systemBlocksForAPI,
-      messages: messages as Anthropic.MessageParam[],
-    })
+    let reply: string
+    let inputTokens: number
+    let outputTokens: number
 
-    let reply = (response.content[0] as Anthropic.TextBlock).text
+    if (GROQ_MODELS.has(model)) {
+      // Usar Groq (gratis)
+      const systemText = GAIA_SYSTEM_PROMPT + (dynamicSection.trim() ? "\n\n" + dynamicSection : "")
+      const groqMessages = [
+        { role: "system" as const, content: systemText },
+        ...(messages as { role: "user" | "assistant"; content: string }[]).map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: typeof m.content === "string" ? m.content : message,
+        }))
+      ]
+      const groqResponse = await groq.chat.completions.create({
+        model: selectedModel,
+        messages: groqMessages,
+        max_tokens: maxTokens,
+        temperature: temperature,
+      })
+      reply = groqResponse.choices[0]?.message?.content || "Sin respuesta"
+      inputTokens = groqResponse.usage?.prompt_tokens || 0
+      outputTokens = groqResponse.usage?.completion_tokens || 0
+    } else {
+      // Usar Claude (Anthropic)
+      const response = await anthropic.messages.create({
+        model: selectedModel,
+        max_tokens: maxTokens,
+        system: systemBlocksForAPI,
+        messages: messages as Anthropic.MessageParam[],
+      })
+      reply = (response.content[0] as Anthropic.TextBlock).text
+      inputTokens = response.usage.input_tokens
+      outputTokens = response.usage.output_tokens
+    }
+
     reply = await extractAndSaveMemory(reply, category)
 
-    const inputTokens = response.usage.input_tokens
-    const outputTokens = response.usage.output_tokens
-    const cost = ((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(5)
+    const cost = GROQ_MODELS.has(model)
+      ? "0.00000" // Groq es gratis
+      : ((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(5)
 
     console.log(`[GAIA-WEB] ${inputTokens}in/${outputTokens}out | $${cost} | ${category} | ${selectedModel}`)
 

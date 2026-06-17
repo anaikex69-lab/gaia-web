@@ -193,6 +193,9 @@ const MODELS = [
   { id: "haiku", name: "Claude Haiku", hint: "Rápido y económico" },
   { id: "sonnet", name: "Claude Sonnet", hint: "Equilibrado · recomendado" },
   { id: "opus", name: "Claude Opus", hint: "Máxima capacidad" },
+  { id: "fable", name: "Claude Fable 5", hint: "Frontier · más poderoso" },
+  { id: "llama", name: "Llama 3.1 70B", hint: "Groq · gratis · rápido" },
+  { id: "llama_fast", name: "Llama 3.1 8B", hint: "Groq · gratis · ultrarrápido" },
 ]
 const RESPONSE_MODES = [
   { id: "casual", label: "Casual" },

@@ -10,7 +10,7 @@ export type UsageStats = {
 }
 
 export type GaiaSettings = {
-  model: "haiku" | "sonnet" | "opus" | "fable"
+  model: "haiku" | "sonnet" | "opus" | "fable" | "llama" | "llama_fast"
   temperature: number
   mode: "casual" | "analysis" | "code" | "creative"
   language: string
