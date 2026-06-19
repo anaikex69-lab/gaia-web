@@ -6,6 +6,23 @@ import { NextRequest, NextResponse } from "next/server"
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_KEY })
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!)
+const TAVILY_KEY = process.env.TAVILY_KEY
+
+const searchWeb = async (query: string): Promise<string> => {
+  if (!TAVILY_KEY) return ""
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: TAVILY_KEY, query, max_results: 3, search_depth: "basic" }),
+    })
+    const data = await res.json()
+    if (!data.results || data.results.length === 0) return ""
+    return data.results.map((r: any) => `- ${r.title}: ${r.content ? r.content.slice(0, 200) : ""}`).join("\n")
+  } catch (e) {
+    return ""
+  }
+}
 
 const GAIA_SYSTEM_PROMPT = `Eres Gaia. La asistente personal de Luis.
 
@@ -24,6 +41,10 @@ RESPUESTAS:
 - Máximo 3-4 líneas. Sin datos extra. Sin emojis. Sin formatos raros.
 - Una sola pregunta por respuesta si es necesario. Solo una.
 - Usa el perfil de Luis como contexto de fondo — no lo menciones a menos que sea relevante.
+
+BÚSQUEDA WEB:
+- Si tienes resultados de búsqueda en el contexto, úsalos para responder con información actual.
+- Sé directa con la info, no expliques que buscaste.
 
 MEMORIA ACTIVA:
 - Guarda información importante al final de tu respuesta:
@@ -121,6 +142,8 @@ const getProfile = async (category: string) => {
       .from("profile_categories")
       .select("key, value")
       .in("category", categories)
+      .order("updated_at", { ascending: false })
+      .limit(15) // Limitar para no gastar tokens de más
     if (error || !data || data.length === 0) return ""
     return data.map((row) => `- ${row.key}: ${row.value}`).join("\n")
   } catch (e) {
@@ -216,6 +239,13 @@ export async function POST(req: NextRequest) {
       })} (hora de Guadalajara)`
     }
     if (profile) dynamicSection += `\n\nPerfil de Luis:\n${profile}`
+
+    // Búsqueda web
+    const needsSearch = TAVILY_KEY && ["busca ", "búscame ", "buscar ", "búscalo", "búscala", "investiga ", "googlea ", "qué pasó", "noticias de"].some((kw) => message.toLowerCase().includes(kw))
+    if (needsSearch) {
+      const searchResults = await searchWeb(message)
+      if (searchResults) dynamicSection += `\n\nResultados de búsqueda web:\n${searchResults}`
+    }
 
     // Leer notas si las menciona
     const needsNotes = /nota|apunte|escribí|guardé|tengo en notas|mis notas|materia|apuntes/.test(message.toLowerCase())
