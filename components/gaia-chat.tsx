@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { ArrowUp, Mic, Paperclip, Sparkle, Plus, AlertCircle, MicOff, FileText, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useGaia } from "@/lib/gaia-context"
+import { GalaxyScene } from "@/components/galaxy/galaxy-scene"
 
 type Message = {
   id: string
@@ -241,13 +242,27 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
   const showStats = sessionUsage.messages > 0
 
   return (
-    <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div className="relative flex h-full flex-col overflow-hidden">
+      {/* Fondo: galaxia 3D */}
+      <div className="absolute inset-0 z-0">
+        <GalaxyScene thinking={loading} />
+      </div>
+
+      {/* Vignette para legibilidad sobre la galaxia */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background: "radial-gradient(120% 90% at 50% 30%, transparent 35%, rgba(3,4,10,0.6) 100%)",
+        }}
+      />
+
+      <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6">
           {messages.map((message) => (
             <div key={message.id} className={cn("flex gap-3", message.role === "user" ? "flex-row-reverse" : "flex-row")}>
               {message.role === "assistant" && (
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden backdrop-blur-sm">
                   {settings.avatarUrl ? (
                     <img src={settings.avatarUrl} alt="Gaia" className="size-8 rounded-lg object-cover" />
                   ) : (
@@ -255,8 +270,8 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
                   )}
                 </div>
               )}
-              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-card text-card-foreground")}>
+              <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap backdrop-blur-md",
+                message.role === "user" ? "bg-primary/60 text-primary-foreground" : "border border-white/10 bg-card/30 text-card-foreground")}>
                 {message.content}
               </div>
             </div>
@@ -264,14 +279,14 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
 
           {loading && (
             <div className="flex gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary overflow-hidden backdrop-blur-sm">
                 {settings.avatarUrl ? (
                   <img src={settings.avatarUrl} alt="Gaia" className="size-8 rounded-lg object-cover animate-pulse" />
                 ) : (
                   <Sparkle className="size-4 animate-pulse" />
                 )}
               </div>
-              <div className="rounded-2xl bg-card px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-2xl border border-white/10 bg-card/70 px-4 py-3 text-sm text-muted-foreground backdrop-blur-md">
                 <span className="inline-flex gap-1">
                   <span className="animate-bounce [animation-delay:0ms]">•</span>
                   <span className="animate-bounce [animation-delay:150ms]">•</span>
@@ -282,7 +297,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
           )}
 
           {error && (
-            <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive backdrop-blur-md">
               <AlertCircle className="size-4 shrink-0" />
               {error}
             </div>
@@ -292,14 +307,14 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
 
       {/* Indicador de escucha */}
       {listening && (
-        <div className="flex items-center justify-center gap-2 border-t border-border/50 bg-primary/5 py-2 text-xs text-primary">
+        <div className="relative z-10 flex items-center justify-center gap-2 border-t border-border/50 bg-primary/5 py-2 text-xs text-primary backdrop-blur-md">
           <span className="size-2 animate-pulse rounded-full bg-primary" />
           Escuchando... habla ahora
         </div>
       )}
 
       {showStats && (
-        <div className="border-t border-border/50 bg-card/30 px-4 py-1.5 sm:px-6">
+        <div className="relative z-10 border-t border-border/50 bg-card/30 px-4 py-1.5 backdrop-blur-md sm:px-6">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 text-[0.65rem] text-muted-foreground/70">
             <span>Modelo: <span className="text-muted-foreground">{modelLabel[settings.model]}</span></span>
             <span className="text-border">|</span>
@@ -312,10 +327,10 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
         </div>
       )}
 
-      <div className="px-4 pb-5 pt-2 sm:px-6">
+      <div className="relative z-10 px-4 pb-5 pt-2 sm:px-6">
         <div className="mx-auto w-full max-w-3xl">
           <form onSubmit={(e) => { e.preventDefault(); send(input) }}
-            className="rounded-2xl border border-border bg-card p-2 shadow-2xl shadow-black/20 focus-within:border-primary/50">
+            className="rounded-2xl border border-white/10 bg-card/25 p-2 shadow-2xl shadow-black/20 backdrop-blur-md focus-within:border-primary/50">
             {attachedFile && (
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs">
                 {attachedFile.isImage && attachedFile.imageBase64 ? (

@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { Menu, X, PanelLeft } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { X, PanelLeft } from "lucide-react"
 import { GaiaSidebar } from "@/components/gaia-sidebar"
 import { GaiaChat } from "@/components/gaia-chat"
 import { GaiaWindow, ComingSoonOverlay, WINDOW_REGISTRY, type WindowState } from "@/components/gaia-window"
@@ -17,9 +17,50 @@ function GaiaApp() {
   const [micOn, setMicOn] = useState(false)
   const [voiceOn, setVoiceOn] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [windows, setWindows] = useState<WindowState[]>([])
   const [topZ, setTopZ] = useState(10)
   const [comingSoon, setComingSoon] = useState<string | null>(null)
+
+  // Swipe desde el borde izquierdo para abrir el sidebar
+  const dragStartX = useRef<number | null>(null)
+  const edgeRef = useRef<HTMLDivElement>(null)
+
+  const onEdgePointerDown = useCallback((e: React.PointerEvent) => {
+    dragStartX.current = e.clientX
+  }, [])
+
+  useEffect(() => {
+    function onPointerMove(e: PointerEvent) {
+      if (dragStartX.current === null) return
+      const delta = e.clientX - dragStartX.current
+      if (delta > 60) {
+        setSidebarOpen(true)
+        dragStartX.current = null
+      }
+    }
+    function onPointerUp() {
+      dragStartX.current = null
+    }
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [])
+
+  // Atajo de teclado: Ctrl/Cmd + B
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault()
+        setSidebarOpen((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
 
   // Cargar settings desde Supabase al montar
   useEffect(() => {
@@ -99,11 +140,39 @@ function GaiaApp() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
-      {/* Desktop sidebar */}
-      <div className="hidden w-72 shrink-0 border-r border-border lg:block">
-        <GaiaSidebar active={active} onSelect={handleSelect} micOn={micOn} voiceOn={voiceOn}
-          onToggleMic={() => setMicOn((v) => !v)} onToggleVoice={() => setVoiceOn((v) => !v)}
-          onNewChat={handleNewChat} />
+      {/* Zona invisible en el borde izquierdo para detectar el swipe */}
+      {!sidebarOpen && (
+        <div
+          ref={edgeRef}
+          onPointerDown={onEdgePointerDown}
+          className="fixed inset-y-0 left-0 z-[110] w-4 cursor-ew-resize lg:block hidden"
+        />
+      )}
+
+      {/* Botón flotante minimalista para abrir/cerrar sidebar */}
+      <button
+        type="button"
+        onClick={() => setSidebarOpen((v) => !v)}
+        aria-label={sidebarOpen ? "Ocultar panel" : "Mostrar panel"}
+        className={cn(
+          "fixed top-4 z-[120] flex size-9 items-center justify-center rounded-full border transition-all duration-300",
+          "border-primary/20 bg-background/40 text-primary/50 backdrop-blur-md hover:border-primary/50 hover:text-primary hover:bg-background/70",
+          sidebarOpen ? "left-[296px] lg:left-[296px]" : "left-4"
+        )}
+      >
+        <PanelLeft className="size-4" />
+      </button>
+
+      {/* Desktop sidebar — colapsable */}
+      <div className={cn(
+        "hidden shrink-0 overflow-hidden border-r border-border transition-all duration-300 lg:block",
+        sidebarOpen ? "w-72" : "w-0 border-r-0"
+      )}>
+        <div className="w-72">
+          <GaiaSidebar active={active} onSelect={handleSelect} micOn={micOn} voiceOn={voiceOn}
+            onToggleMic={() => setMicOn((v) => !v)} onToggleVoice={() => setVoiceOn((v) => !v)}
+            onNewChat={handleNewChat} />
+        </div>
       </div>
 
       {/* Mobile drawer */}
@@ -120,30 +189,18 @@ function GaiaApp() {
         </div>
       </div>
 
+      {/* Botón mobile flotante (abre el drawer) */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Mostrar panel"
+        className="fixed left-4 top-4 z-[120] flex size-9 items-center justify-center rounded-full border border-primary/20 bg-background/40 text-primary/50 backdrop-blur-md lg:hidden"
+      >
+        <PanelLeft className="size-4" />
+      </button>
+
       {/* Main */}
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:px-6">
-          <button type="button" onClick={() => setMobileOpen(true)}
-            className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent lg:hidden">
-            <Menu className="size-5" />
-          </button>
-          <PanelLeft className="hidden size-[18px] text-muted-foreground lg:block" />
-          <div className="flex flex-col leading-tight">
-            <h1 className="text-sm font-semibold capitalize text-foreground">
-              {active === "chats" ? "Chat" : active.replace("-", " ")}
-            </h1>
-            <span className="text-xs text-muted-foreground">
-              {settings.assistantName} · {settings.model === "fable" ? "Fable 5" : settings.model.charAt(0).toUpperCase() + settings.model.slice(1)}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground sm:flex">
-              <span className="size-1.5 rounded-full bg-primary" />Online
-            </span>
-            <div className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">LB</div>
-          </div>
-        </header>
-
         <div className="relative min-h-0 flex-1">
           <GaiaChat micOn={micOn} />
 
