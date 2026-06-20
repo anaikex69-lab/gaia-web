@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { X, PanelLeft } from "lucide-react"
 import { GaiaSidebar } from "@/components/gaia-sidebar"
 import { GaiaChat } from "@/components/gaia-chat"
+import { GaiaCallMode } from "@/components/gaia-call-mode"
 import { GaiaWindow, ComingSoonOverlay, WINDOW_REGISTRY, type WindowState } from "@/components/gaia-window"
 import { GaiaProvider, useGaia } from "@/lib/gaia-context"
 import { LoginScreen } from "@/components/login-screen"
@@ -18,11 +19,11 @@ function GaiaApp() {
   const [voiceOn, setVoiceOn] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [callModeOpen, setCallModeOpen] = useState(false)
   const [windows, setWindows] = useState<WindowState[]>([])
   const [topZ, setTopZ] = useState(10)
   const [comingSoon, setComingSoon] = useState<string | null>(null)
 
-  // Swipe desde el borde izquierdo para abrir el sidebar
   const dragStartX = useRef<number | null>(null)
   const edgeRef = useRef<HTMLDivElement>(null)
 
@@ -50,7 +51,6 @@ function GaiaApp() {
     }
   }, [])
 
-  // Atajo de teclado: Ctrl/Cmd + B
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
@@ -62,7 +62,6 @@ function GaiaApp() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [])
 
-  // Cargar settings desde Supabase al montar
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -87,14 +86,22 @@ function GaiaApp() {
       const nextZ = topZ + 1
       setTopZ(nextZ)
       const existing = prev.find((w) => w.id === id)
-      if (existing) return prev.map((w) => (w.id === id ? { ...w, minimized: false, z: nextZ } : w))
+      if (existing) {
+        return prev.map((w) => (w.id === id ? { ...w, minimized: false, z: nextZ } : w))
+      }
       const offset = prev.length * 28
       return [...prev, { id, minimized: false, x: 48 + offset, y: 36 + offset, z: nextZ }]
     })
   }, [topZ])
 
-  const closeWindow = useCallback((id: string) => setWindows((prev) => prev.filter((w) => w.id !== id)), [])
-  const minimizeWindow = useCallback((id: string) => setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, minimized: true } : w))), [])
+  const closeWindow = useCallback((id: string) => {
+    setWindows((prev) => prev.filter((w) => w.id !== id))
+  }, [])
+
+  const minimizeWindow = useCallback((id: string) => {
+    setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, minimized: true } : w)))
+  }, [])
+
   const focusWindow = useCallback((id: string) => {
     setWindows((prev) => {
       const nextZ = topZ + 1
@@ -102,7 +109,10 @@ function GaiaApp() {
       return prev.map((w) => (w.id === id ? { ...w, z: nextZ } : w))
     })
   }, [topZ])
-  const moveWindow = useCallback((id: string, x: number, y: number) => setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, x, y } : w))), [])
+
+  const moveWindow = useCallback((id: string, x: number, y: number) => {
+    setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, x, y } : w)))
+  }, [])
 
   async function handleNewChat() {
     try {
@@ -114,17 +124,24 @@ function GaiaApp() {
         setActive("chats")
         setMobileOpen(false)
       }
-    } catch (e) { console.error("Error creating chat:", e) }
+    } catch (e) {
+      console.error("Error creating chat:", e)
+    }
   }
 
   function handleSelect(id: string) {
     setActive(id)
     setMobileOpen(false)
-    if (id === "chats" || id === "new-chat") return
-    if (WINDOW_TOOLS.has(id)) { openWindow(id) } else { setComingSoon(id) }
+    if (id === "chats" || id === "new-chat") {
+      return
+    }
+    if (WINDOW_TOOLS.has(id)) {
+      openWindow(id)
+    } else {
+      setComingSoon(id)
+    }
   }
 
-  // Guardar settings en Supabase cuando cambian
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetch("/api/settings", {
@@ -140,16 +157,14 @@ function GaiaApp() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
-      {/* Zona invisible en el borde izquierdo para detectar el swipe */}
       {!sidebarOpen && (
         <div
           ref={edgeRef}
           onPointerDown={onEdgePointerDown}
-          className="fixed inset-y-0 left-0 z-[110] w-4 cursor-ew-resize lg:block hidden"
+          className="fixed inset-y-0 left-0 z-40 w-3 cursor-ew-resize lg:block hidden"
         />
       )}
 
-      {/* Botón flotante minimalista para abrir/cerrar sidebar */}
       <button
         type="button"
         onClick={() => setSidebarOpen((v) => !v)}
@@ -163,33 +178,55 @@ function GaiaApp() {
         <PanelLeft className="size-4" />
       </button>
 
-      {/* Desktop sidebar — colapsable */}
-      <div className={cn(
-        "hidden shrink-0 overflow-hidden border-r border-border transition-all duration-300 lg:block",
-        sidebarOpen ? "w-72" : "w-0 border-r-0"
-      )}>
-        <div className="w-72">
-          <GaiaSidebar active={active} onSelect={handleSelect} micOn={micOn} voiceOn={voiceOn}
-            onToggleMic={() => setMicOn((v) => !v)} onToggleVoice={() => setVoiceOn((v) => !v)}
-            onNewChat={handleNewChat} />
+      <div
+        className={cn(
+          "hidden h-full shrink-0 overflow-hidden border-r border-border transition-all duration-300 lg:block",
+          sidebarOpen ? "w-72" : "w-0 border-r-0"
+        )}
+      >
+        <div className="h-full w-72">
+          <GaiaSidebar
+            active={active}
+            onSelect={handleSelect}
+            micOn={micOn}
+            voiceOn={voiceOn}
+            onToggleMic={() => setCallModeOpen(true)}
+            onToggleVoice={() => setVoiceOn((v) => !v)}
+            onNewChat={handleNewChat}
+          />
         </div>
       </div>
 
-      {/* Mobile drawer */}
       <div className={cn("fixed inset-0 z-[100] lg:hidden", mobileOpen ? "pointer-events-auto" : "pointer-events-none")}>
-        <div onClick={() => setMobileOpen(false)} className={cn("absolute inset-0 bg-black/60 transition-opacity", mobileOpen ? "opacity-100" : "opacity-0")} />
-        <div className={cn("absolute inset-y-0 left-0 w-72 border-r border-border transition-transform", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
-          <button type="button" onClick={() => setMobileOpen(false)}
-            className="absolute right-3 top-4 z-10 flex size-9 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent">
+        <div
+          onClick={() => setMobileOpen(false)}
+          className={cn("absolute inset-0 bg-black/60 transition-opacity", mobileOpen ? "opacity-100" : "opacity-0")}
+        />
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 w-72 border-r border-border transition-transform",
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="absolute right-3 top-4 z-10 flex size-9 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
+          >
             <X className="size-5" />
           </button>
-          <GaiaSidebar active={active} onSelect={handleSelect} micOn={micOn} voiceOn={voiceOn}
-            onToggleMic={() => setMicOn((v) => !v)} onToggleVoice={() => setVoiceOn((v) => !v)}
-            onNewChat={handleNewChat} />
+          <GaiaSidebar
+            active={active}
+            onSelect={handleSelect}
+            micOn={micOn}
+            voiceOn={voiceOn}
+            onToggleMic={() => setCallModeOpen(true)}
+            onToggleVoice={() => setVoiceOn((v) => !v)}
+            onNewChat={handleNewChat}
+          />
         </div>
       </div>
 
-      {/* Botón mobile flotante (abre el drawer) */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
@@ -199,16 +236,22 @@ function GaiaApp() {
         <PanelLeft className="size-4" />
       </button>
 
-      {/* Main */}
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
-          <GaiaChat micOn={micOn} />
+          {!callModeOpen && <GaiaChat micOn={micOn} />}
 
           {comingSoon && <ComingSoonOverlay id={comingSoon} onClose={() => setComingSoon(null)} />}
 
           {windows.map((w) => (
-            <GaiaWindow key={w.id} state={w} meta={WINDOW_REGISTRY[w.id]} onClose={closeWindow}
-              onMinimize={minimizeWindow} onFocus={focusWindow} onMove={moveWindow} />
+            <GaiaWindow
+              key={w.id}
+              state={w}
+              meta={WINDOW_REGISTRY[w.id]}
+              onClose={closeWindow}
+              onMinimize={minimizeWindow}
+              onFocus={focusWindow}
+              onMove={moveWindow}
+            />
           ))}
 
           {minimized.length > 0 && (
@@ -219,12 +262,19 @@ function GaiaApp() {
                   const Icon = meta.icon
                   return (
                     <div key={w.id} className="flex shrink-0 items-center">
-                      <button type="button" onClick={() => openWindow(w.id)}
-                        className="flex min-h-9 items-center gap-2 rounded-l-xl rounded-r-none bg-secondary/70 px-3 text-xs font-medium text-foreground hover:bg-secondary">
-                        <Icon className="size-4 text-primary" />{meta.label}
+                      <button
+                        type="button"
+                        onClick={() => openWindow(w.id)}
+                        className="flex min-h-9 items-center gap-2 rounded-l-xl rounded-r-none bg-secondary/70 px-3 text-xs font-medium text-foreground hover:bg-secondary"
+                      >
+                        <Icon className="size-4 text-primary" />
+                        {meta.label}
                       </button>
-                      <button type="button" onClick={() => closeWindow(w.id)}
-                        className="flex min-h-9 items-center rounded-l-none rounded-r-xl bg-secondary/70 pl-1 pr-2 text-muted-foreground hover:bg-destructive/20 hover:text-destructive">
+                      <button
+                        type="button"
+                        onClick={() => closeWindow(w.id)}
+                        className="flex min-h-9 items-center rounded-l-none rounded-r-xl bg-secondary/70 pl-1 pr-2 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                      >
                         <X className="size-3.5" />
                       </button>
                     </div>
@@ -235,6 +285,8 @@ function GaiaApp() {
           )}
         </div>
       </main>
+
+      {callModeOpen && <GaiaCallMode onExit={() => setCallModeOpen(false)} />}
     </div>
   )
 }
@@ -247,9 +299,13 @@ export default function Page() {
     setAuthed(!!token)
   }, [])
 
-  if (authed === null) return null // loading
+  if (authed === null) {
+    return null
+  }
 
-  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />
+  if (!authed) {
+    return <LoginScreen onLogin={() => setAuthed(true)} />
+  }
 
   return (
     <GaiaProvider>
