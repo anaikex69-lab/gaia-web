@@ -23,6 +23,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
   const [status, setStatus] = useState<CallStatus>("listening")
   const [uiVisible, setUiVisible] = useState(true)
   const [transcript, setTranscript] = useState("")
+  const [debugError, setDebugError] = useState("")
 
   const statusRef = useRef<CallStatus>("listening")
   const recognitionRef = useRef<any>(null)
@@ -88,9 +89,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
       setStatusBoth("idle")
       return
     }
-    console.log("[GAIA DEBUG] startListening() iniciado, intento #" + loopGuardRef.current)
 
-    // si pasan 4s sin volver a entrar aquí, asumimos que ya está escuchando bien y reseteamos el contador
     if (loopGuardResetTimerRef.current) clearTimeout(loopGuardResetTimerRef.current)
     loopGuardResetTimerRef.current = setTimeout(() => {
       loopGuardRef.current = 0
@@ -120,12 +119,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
     let lastInterim = ""
 
-    recognition.onstart = () => {
-      console.log("[GAIA DEBUG] recognition.onstart — el micrófono SÍ se activó correctamente")
-    }
-
     recognition.onresult = (event: any) => {
-      console.log("[GAIA DEBUG] recognition.onresult disparado, resultados:", event.results.length)
       let interim = ""
       let final = finalTranscriptRef.current
 
@@ -144,7 +138,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       silenceTimerRef.current = setTimeout(() => {
-        console.log("[GAIA DEBUG] Silencio detectado, deteniendo recognition. interim guardado:", lastInterim)
         if (!finalTranscriptRef.current.trim() && lastInterim.trim()) {
           finalTranscriptRef.current = lastInterim
         }
@@ -153,7 +146,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
     }
 
     recognition.onend = () => {
-      console.log("[GAIA DEBUG] recognition.onend disparado. finalTranscript:", JSON.stringify(finalTranscriptRef.current))
       if (!isMountedRef.current) return
       const finalText = finalTranscriptRef.current.trim()
 
@@ -166,16 +158,14 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
     recognition.onerror = (event: any) => {
       if (event.error === "no-speech" || event.error === "aborted") {
-        console.log("[GAIA DEBUG] recognition.onerror (esperado):", event.error)
         return
       }
-      console.error("[GAIA DEBUG] recognition.onerror (INESPERADO):", event.error)
+      console.error("[GAIA DEBUG] recognition.onerror:", event.error)
     }
 
     recognitionRef.current = recognition
     try {
       recognition.start()
-      console.log("[GAIA DEBUG] recognition.start() llamado sin throw")
     } catch (err) {
       console.error("[GAIA DEBUG] recognition.start() lanzó excepción:", err)
     }
@@ -186,17 +176,20 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
   }, [startListening])
 
   const speak = useCallback(async (text: string) => {
-    console.log("[GAIA DEBUG] speak() llamado con texto:", text)
     setStatusBoth("speaking")
+    setDebugError("")
     try {
       const res = await fetch("/api/voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       })
-      console.log("[GAIA DEBUG] /api/voice respondió status:", res.status)
-      if (!res.ok) throw new Error("voice error")
+      if (!res.ok) {
+        setDebugError(`fetch falló: ${res.status}`)
+        throw new Error("voice error")
+      }
       const blob = await res.blob()
+      setDebugError(`blob recibido: ${blob.size} bytes, tipo ${blob.type}`)
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
       audioRef.current = audio
@@ -207,13 +200,15 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         startListeningRef.current()
       }
       audio.onerror = () => {
+        setDebugError(`audio.onerror: ${JSON.stringify(audio.error)}`)
         URL.revokeObjectURL(url)
         if (!isMountedRef.current) return
         startListeningRef.current()
       }
       await audio.play()
-    } catch (err) {
-      console.error("[GAIA DEBUG] Error reproduciendo voz:", err)
+      setDebugError("play() exitoso")
+    } catch (err: any) {
+      setDebugError(`catch: ${err?.message || String(err)}`)
       if (isMountedRef.current) {
         startListeningRef.current()
       }
@@ -224,10 +219,8 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
   const sendToGaia = useCallback(async (text: string) => {
     const trimmed = text.trim()
-    console.log("[GAIA DEBUG] sendToGaia llamado con:", trimmed, "activeChatId:", activeChatId)
 
     if (!trimmed || !activeChatId) {
-      console.log("[GAIA DEBUG] No hay texto o no hay activeChatId, regresando a escuchar")
       startListeningRef.current()
       return
     }
@@ -240,7 +233,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
     setStatusBoth("thinking")
     setTranscript("")
-    console.log("[GAIA DEBUG] Mandando fetch a /api/chat...")
 
     try {
       const res = await fetch("/api/chat", {
@@ -255,7 +247,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         }),
       })
       const data = await res.json()
-      console.log("[GAIA DEBUG] Respuesta recibida:", res.status, data)
       if (!res.ok) throw new Error(data.error || "Error")
 
       if (data.chatTitle) updateChatTitle(activeChatId, data.chatTitle)
@@ -331,6 +322,11 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         {transcript && status === "listening" && (
           <p className="max-w-md text-center text-sm text-foreground/60 transition-opacity duration-300">
             {transcript}
+          </p>
+        )}
+        {debugError && (
+          <p className="max-w-md break-all text-center text-xs text-yellow-400">
+            {debugError}
           </p>
         )}
       </div>
