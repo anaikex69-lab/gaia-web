@@ -276,6 +276,18 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     isMountedRef.current = true
+
+    // Desbloquea el audio en iOS Safari: reproduce un silencio brevísimo
+    // dentro del primer ciclo de render, aprovechando que esto cuenta
+    // como "gesto de usuario" porque viene del click que abrió este modo.
+    try {
+      const unlockAudio = new Audio(
+        "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC7k1RfQ5e9d9PEW1ze9PdEDXjVe9Dl83iJjjJTpW8s12C9c1KdShFsCAaGyMHfgCFwAH8jBSHC8wIIQUgcZsAFKbm9wcCQAEhDhMBzMOXm6tGoQwfFKKwgQQGAACi8gAQA"
+      )
+      unlockAudio.volume = 0.01
+      unlockAudio.play().catch(() => {})
+    } catch {}
+
     startListening()
     return () => {
       isMountedRef.current = false
