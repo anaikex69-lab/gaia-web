@@ -137,15 +137,32 @@ const getRecentMessages = async (chatId: string, limit = 12) => {
 
 const getProfile = async (category: string) => {
   try {
-    const categories = category !== "personal" ? ["personal", category] : ["personal"]
+    // Traemos TODAS las categorías, no solo personal+detectada, para no
+    // perder datos importantes que quedaron en otra categoría.
     const { data, error } = await supabase
       .from("profile_categories")
-      .select("key, value")
-      .in("category", categories)
+      .select("key, value, category, updated_at")
       .order("updated_at", { ascending: false })
-      .limit(15) // Limitar para no gastar tokens de más
+      .limit(80) // techo de seguridad, no el límite real que se manda al modelo
+
     if (error || !data || data.length === 0) return ""
-    return data.map((row) => `- ${row.key}: ${row.value}`).join("\n")
+
+    // Distribuimos el límite real entre categorías para que ninguna
+    // domine y desplace a las demás (ej: 40 entradas de "escuela" no
+    // deben tapar el único dato de "personal" sobre la novia).
+    const PER_CATEGORY_LIMIT = 8
+    const grouped: Record<string, typeof data> = {}
+    for (const row of data) {
+      if (!grouped[row.category]) grouped[row.category] = []
+      if (grouped[row.category].length < PER_CATEGORY_LIMIT) {
+        grouped[row.category].push(row)
+      }
+    }
+
+    const allRows = Object.values(grouped).flat()
+    if (allRows.length === 0) return ""
+
+    return allRows.map((row) => `- ${row.key}: ${row.value}`).join("\n")
   } catch (e) {
     return ""
   }
