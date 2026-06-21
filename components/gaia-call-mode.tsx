@@ -200,17 +200,36 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
       if (spanishFemale) utterance.voice = spanishFemale
       else if (anySpanish) utterance.voice = anySpanish
 
-      utterance.onend = () => {
-        if (!isMountedRef.current) return
-        startListeningRef.current()
-      }
-      utterance.onerror = (e) => {
-        setDebugError(`speechSynthesis error: ${e.error}`)
+      let resumed = false
+      const resumeOnce = (reason: string) => {
+        if (resumed) return
+        resumed = true
+        setDebugError(`voz navegador terminó (${reason})`)
         if (!isMountedRef.current) return
         startListeningRef.current()
       }
 
+      utterance.onend = () => resumeOnce("onend")
+      utterance.onerror = (e) => resumeOnce(`onerror:${e.error}`)
+
+      // Red de seguridad: si Safari nunca dispara onend/onerror (bug conocido
+      // en iOS), forzamos la continuación tras un tiempo basado en la
+      // longitud del texto, para no quedarnos trabados en "Pensando..." para siempre.
+      const estimatedMs = Math.max(4000, text.length * 80)
+      setTimeout(() => resumeOnce("timeout-seguridad"), estimatedMs)
+
       window.speechSynthesis.speak(utterance)
+
+      // Hack conocido de iOS Safari: a veces speechSynthesis se "duerme"
+      // si la utterance es larga. Lo mantenemos despierto con un ping.
+      const keepAlive = setInterval(() => {
+        if (resumed || !window.speechSynthesis.speaking) {
+          clearInterval(keepAlive)
+          return
+        }
+        window.speechSynthesis.pause()
+        window.speechSynthesis.resume()
+      }, 5000)
     } catch (err: any) {
       setDebugError(`catch voz navegador: ${err?.message || String(err)}`)
       if (isMountedRef.current) startListeningRef.current()
