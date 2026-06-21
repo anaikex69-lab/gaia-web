@@ -182,9 +182,11 @@ const VALID_MODELS: Record<string, string> = {
   fable: "claude-fable-5-20260609",
   llama: "llama-3.1-70b-versatile",
   llama_fast: "llama-3.1-8b-instant",
+  gpt_oss: "openai/gpt-oss-120b",
 }
 
-const GROQ_MODELS = new Set(["llama", "llama_fast"])
+const GROQ_MODELS = new Set(["llama", "llama_fast", "gpt_oss"])
+const GROQ_FREE_MODELS = new Set(["llama", "llama_fast"])
 
 // Genera título automático para el chat basado en el primer mensaje
 const generateChatTitle = async (message: string): Promise<string> => {
@@ -343,9 +345,11 @@ export async function POST(req: NextRequest) {
 
     reply = await extractAndSaveMemory(reply, category)
 
-    const cost = GROQ_MODELS.has(model)
-      ? "0.00000" // Groq es gratis
-      : ((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(5)
+    const cost = GROQ_FREE_MODELS.has(model)
+      ? "0.00000" // Llama es gratis en Groq
+      : GROQ_MODELS.has(model)
+        ? ((inputTokens * 0.00000015) + (outputTokens * 0.00000075)).toFixed(5) // gpt-oss-120b
+        : ((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(5) // Claude
 
     console.log(`[GAIA-WEB] ${inputTokens}in/${outputTokens}out | $${cost} | ${category} | ${selectedModel}`)
 

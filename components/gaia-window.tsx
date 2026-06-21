@@ -197,6 +197,7 @@ const MODELS = [
   { id: "sonnet", name: "Claude Sonnet", hint: "Equilibrado · recomendado" },
   { id: "opus", name: "Claude Opus", hint: "Máxima capacidad" },
   { id: "fable", name: "Claude Fable 5", hint: "Frontier · más poderoso" },
+  { id: "gpt_oss", name: "GPT-OSS 120B", hint: "Groq · económico · buena calidad" },
   { id: "llama", name: "Llama 3.1 70B", hint: "Groq · gratis · rápido" },
   { id: "llama_fast", name: "Llama 3.1 8B", hint: "Groq · gratis · ultrarrápido" },
 ]
