@@ -139,7 +139,6 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     if (activeChatId) {
       loadChatHistory(activeChatId)
     } else if (chatsLoaded) {
-      // Solo crear chat nuevo cuando ya sabemos que no hay ninguno guardado
       createNewChat()
     }
   }, [activeChatId, chatsLoaded])
@@ -238,7 +237,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     }
   }
 
-  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", fable: "Fable 5", llama: "Llama 70B", llama_fast: "Llama 8B" }
+  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", fable: "Fable 5", gpt_oss: "GPT-OSS 120B", llama: "Llama 70B", llama_fast: "Llama 8B" }
   const showStats = sessionUsage.messages > 0
 
   return (
@@ -313,21 +312,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
         </div>
       )}
 
-      {showStats && (
-        <div className="relative z-10 border-t border-border/50 bg-card/30 px-4 py-1.5 backdrop-blur-md sm:px-6">
-          <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 text-[0.65rem] text-muted-foreground/70">
-            <span>Modelo: <span className="text-muted-foreground">{modelLabel[settings.model]}</span></span>
-            <span className="text-border">|</span>
-            <span>Mensajes: <span className="text-muted-foreground">{sessionUsage.messages}</span></span>
-            <span className="text-border">|</span>
-            <span>Tokens: <span className="text-muted-foreground">{(sessionUsage.input + sessionUsage.output).toLocaleString()}</span></span>
-            <span className="text-border">|</span>
-            <span>Costo sesión: <span className="text-primary font-medium">${sessionUsage.cost.toFixed(5)} USD</span></span>
-          </div>
-        </div>
-      )}
-
-      <div className="relative z-10 px-4 pb-5 pt-2 sm:px-6">
+      <div className="relative z-10 px-4 pb-2 pt-2 sm:px-6">
         <div className="mx-auto w-full max-w-3xl">
           <form onSubmit={(e) => { e.preventDefault(); send(input) }}
             className="rounded-2xl border border-white/10 bg-card/25 p-2 shadow-2xl shadow-black/20 backdrop-blur-md focus-within:border-primary/50">
@@ -384,6 +369,18 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
             </div>
           </form>
           <p className="mt-2 text-center text-xs text-muted-foreground">Gaia puede equivocarse. Verifica la información importante.</p>
+
+          {showStats && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-[0.65rem] text-muted-foreground/50">
+              <span>Modelo: <span className="text-muted-foreground/70">{modelLabel[settings.model]}</span></span>
+              <span className="text-border">|</span>
+              <span>Mensajes: <span className="text-muted-foreground/70">{sessionUsage.messages}</span></span>
+              <span className="text-border">|</span>
+              <span>Tokens: <span className="text-muted-foreground/70">{(sessionUsage.input + sessionUsage.output).toLocaleString()}</span></span>
+              <span className="text-border">|</span>
+              <span>Costo: <span className="text-primary/70 font-medium">${sessionUsage.cost.toFixed(5)}</span></span>
+            </div>
+          )}
         </div>
       </div>
     </div>
