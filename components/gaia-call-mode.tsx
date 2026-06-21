@@ -63,6 +63,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
     try { recognitionRef.current?.stop() } catch {}
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     if (loopGuardResetTimerRef.current) clearTimeout(loopGuardResetTimerRef.current)
+    try { window.speechSynthesis.cancel() } catch {}
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
@@ -175,9 +176,50 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
     startListeningRef.current = startListening
   }, [startListening])
 
+  // ── Voz de respaldo: Web Speech API (gratis, local, sin límites) ──
+  const speakWithBrowserVoice = useCallback((text: string) => {
+    setDebugError("usando voz del navegador (respaldo)")
+    try {
+      if (!("speechSynthesis" in window)) {
+        setDebugError("este navegador no soporta speechSynthesis")
+        startListeningRef.current()
+        return
+      }
+
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = settings.language === "es" ? "es-MX" : "en-US"
+      utterance.rate = 1.0
+      utterance.pitch = 1.0
+
+      const voices = window.speechSynthesis.getVoices()
+      const spanishFemale = voices.find(
+        (v) => v.lang.startsWith("es") && /female|mujer|maria|paulina|monica|mónica|sabina/i.test(v.name)
+      )
+      const anySpanish = voices.find((v) => v.lang.startsWith("es"))
+      if (spanishFemale) utterance.voice = spanishFemale
+      else if (anySpanish) utterance.voice = anySpanish
+
+      utterance.onend = () => {
+        if (!isMountedRef.current) return
+        startListeningRef.current()
+      }
+      utterance.onerror = (e) => {
+        setDebugError(`speechSynthesis error: ${e.error}`)
+        if (!isMountedRef.current) return
+        startListeningRef.current()
+      }
+
+      window.speechSynthesis.speak(utterance)
+    } catch (err: any) {
+      setDebugError(`catch voz navegador: ${err?.message || String(err)}`)
+      if (isMountedRef.current) startListeningRef.current()
+    }
+  }, [settings.language])
+
   const speak = useCallback(async (text: string) => {
     setStatusBoth("speaking")
-    setDebugError("")
+    setDebugError("intentando ElevenLabs...")
     try {
       const res = await fetch("/api/voice", {
         method: "POST",
@@ -185,14 +227,19 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         body: JSON.stringify({ text }),
       })
       if (!res.ok) {
-        setDebugError(`fetch falló: ${res.status}`)
-        throw new Error("voice error")
+        setDebugError(`ElevenLabs falló (${res.status}), usando respaldo`)
+        speakWithBrowserVoice(text)
+        return
       }
       const blob = await res.blob()
-      setDebugError(`blob recibido: ${blob.size} bytes, tipo ${blob.type}`)
       const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
+
+      const audio = audioRef.current
+      if (!audio) {
+        setDebugError("sin audio precreado, usando respaldo")
+        speakWithBrowserVoice(text)
+        return
+      }
 
       audio.onended = () => {
         URL.revokeObjectURL(url)
@@ -200,20 +247,19 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         startListeningRef.current()
       }
       audio.onerror = () => {
-        setDebugError(`audio.onerror: ${JSON.stringify(audio.error)}`)
         URL.revokeObjectURL(url)
-        if (!isMountedRef.current) return
-        startListeningRef.current()
+        setDebugError("audio.onerror, usando respaldo")
+        speakWithBrowserVoice(text)
       }
+
+      audio.src = url
       await audio.play()
-      setDebugError("play() exitoso")
+      setDebugError("ElevenLabs reproduciendo OK")
     } catch (err: any) {
-      setDebugError(`catch: ${err?.message || String(err)}`)
-      if (isMountedRef.current) {
-        startListeningRef.current()
-      }
+      setDebugError(`catch ElevenLabs: ${err?.message || String(err)}, usando respaldo`)
+      speakWithBrowserVoice(text)
     }
-  }, [setStatusBoth])
+  }, [setStatusBoth, speakWithBrowserVoice])
 
   const sendToGaiaRef = useRef<(text: string) => void>(() => {})
 
@@ -268,15 +314,20 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     isMountedRef.current = true
 
-    // Desbloquea el audio en iOS Safari: reproduce un silencio brevísimo
-    // dentro del primer ciclo de render, aprovechando que esto cuenta
-    // como "gesto de usuario" porque viene del click que abrió este modo.
+    // Desbloquea el audio en iOS Safari para ElevenLabs
+    const audio = new Audio()
+    audio.playsInline = true
+    audioRef.current = audio
+    audio
+      .play()
+      .catch(() => {})
+      .finally(() => {
+        audio.pause()
+      })
+
+    // Precargar voces del navegador (en iOS a veces tardan en poblarse)
     try {
-      const unlockAudio = new Audio(
-        "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC7k1RfQ5e9d9PEW1ze9PdEDXjVe9Dl83iJjjJTpW8s12C9c1KdShFsCAaGyMHfgCFwAH8jBSHC8wIIQUgcZsAFKbm9wcCQAEhDhMBzMOXm6tGoQwfFKKwgQQGAACi8gAQA"
-      )
-      unlockAudio.volume = 0.01
-      unlockAudio.play().catch(() => {})
+      window.speechSynthesis.getVoices()
     } catch {}
 
     startListening()
@@ -285,6 +336,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
       try { recognitionRef.current?.stop() } catch {}
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       if (loopGuardResetTimerRef.current) clearTimeout(loopGuardResetTimerRef.current)
+      try { window.speechSynthesis.cancel() } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
