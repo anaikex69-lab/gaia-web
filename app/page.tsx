@@ -114,6 +114,10 @@ function GaiaApp() {
     setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, x, y } : w)))
   }, [])
 
+  const resizeWindow = useCallback((id: string, width: number, height: number) => {
+    setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, width, height } : w)))
+  }, [])
+
   async function handleNewChat() {
     try {
       const res = await fetch("/api/chat", { method: "PUT" })
@@ -178,12 +182,10 @@ function GaiaApp() {
         <PanelLeft className="size-4" />
       </button>
 
-      <div
-        className={cn(
-          "hidden h-full shrink-0 overflow-hidden border-r border-border transition-all duration-300 lg:block",
-          sidebarOpen ? "w-72" : "w-0 border-r-0"
-        )}
-      >
+      <div className={cn(
+        "hidden h-full shrink-0 overflow-hidden border-r border-border transition-all duration-300 lg:block",
+        sidebarOpen ? "w-72" : "w-0 border-r-0"
+      )}>
         <div className="h-full w-72">
           <GaiaSidebar
             active={active}
@@ -251,6 +253,7 @@ function GaiaApp() {
               onMinimize={minimizeWindow}
               onFocus={focusWindow}
               onMove={moveWindow}
+              onResize={resizeWindow}
             />
           ))}
 

@@ -36,7 +36,15 @@ export const WINDOW_REGISTRY: Record<string, WindowMeta> = {
   usage: { id: "usage", label: "Uso", icon: BarChart3 },
 }
 
-export type WindowState = { id: string; minimized: boolean; x: number; y: number; z: number }
+export type WindowState = {
+  id: string
+  minimized: boolean
+  x: number
+  y: number
+  z: number
+  width?: number
+  height?: number
+}
 
 type GaiaWindowProps = {
   state: WindowState
@@ -45,11 +53,13 @@ type GaiaWindowProps = {
   onMinimize: (id: string) => void
   onFocus: (id: string) => void
   onMove: (id: string, x: number, y: number) => void
+  onResize: (id: string, width: number, height: number) => void
 }
 
-export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }: GaiaWindowProps) {
+export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove, onResize }: GaiaWindowProps) {
   const Icon = meta.icon
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
+  const resizeRef = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null)
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     onFocus(state.id)
@@ -68,6 +78,31 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
     ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
   }, [])
 
+  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation()
+    onFocus(state.id)
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    resizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originW: state.width ?? 512,
+      originH: state.height ?? 500,
+    }
+  }, [onFocus, state.id, state.width, state.height])
+
+  const handleResizePointerMove = useCallback((e: React.PointerEvent) => {
+    const d = resizeRef.current
+    if (!d) return
+    const newW = Math.max(300, Math.min(window.innerWidth * 0.9, d.originW + (e.clientX - d.startX)))
+    const newH = Math.max(200, Math.min(window.innerHeight * 0.9, d.originH + (e.clientY - d.startY)))
+    onResize(state.id, newW, newH)
+  }, [onResize, state.id])
+
+  const handleResizePointerUp = useCallback((e: React.PointerEvent) => {
+    resizeRef.current = null
+    ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+  }, [])
+
   if (state.minimized) return null
 
   return (
@@ -75,9 +110,16 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
       role="dialog"
       aria-label={meta.label}
       onMouseDown={() => onFocus(state.id)}
-      style={{ left: state.x, top: state.y, zIndex: state.z }}
-      className="absolute flex max-h-[82%] w-[min(92vw,32rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-black/40"
+      style={{
+        left: state.x,
+        top: state.y,
+        zIndex: state.z,
+        width: state.width ? `${state.width}px` : "min(92vw, 32rem)",
+        height: state.height ? `${state.height}px` : undefined,
+      }}
+      className="absolute flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-black/40"
     >
+      {/* Header — drag */}
       <div
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -98,13 +140,27 @@ export function GaiaWindow({ state, meta, onClose, onMinimize, onFocus, onMove }
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {state.id === "usage" ? <UsageContent /> 
-          : state.id === "notes" ? <NotesContent /> 
+      {/* Content */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto p-4">
+        {state.id === "usage" ? <UsageContent />
+          : state.id === "notes" ? <NotesContent />
           : state.id === "calendar" ? <CalendarContent />
           : state.id === "tasks" ? <TasksContent />
           : state.id === "memory" ? <MemoryContent />
           : <SettingsContent />}
+
+        {/* Handle de resize — esquina inferior derecha */}
+        <div
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          className="absolute bottom-1 right-1 z-10 flex size-5 cursor-se-resize items-center justify-center text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors"
+          aria-hidden="true"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M9 1L1 9M9 5L5 9M9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
       </div>
     </div>
   )
@@ -133,7 +189,6 @@ function StatCard({ label, value, icon: Icon, accent }: UsageStat) {
   )
 }
 
-// ── USAGE CONTENT (datos reales del contexto) ──
 function NotesContent() { return <NotesPanel /> }
 function ScheduleContent() { return <SchedulePanel /> }
 function CalendarContent() { return <CalendarPanel /> }
@@ -191,7 +246,6 @@ function UsageContent() {
   )
 }
 
-// ── SETTINGS CONTENT (conectado al contexto global) ──
 const MODELS = [
   { id: "haiku", name: "Claude Haiku", hint: "Rápido y económico" },
   { id: "sonnet", name: "Claude Sonnet", hint: "Equilibrado · recomendado" },
@@ -238,7 +292,6 @@ function SettingsContent() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Model */}
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Modelo</legend>
         {MODELS.map((m) => {
@@ -258,7 +311,6 @@ function SettingsContent() {
         })}
       </fieldset>
 
-      {/* Temperature */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <label htmlFor="temperature" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Temperatura</label>
@@ -272,7 +324,6 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* Response mode */}
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Modo de respuesta</span>
         <div className="grid grid-cols-2 gap-2">
@@ -289,7 +340,6 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* Language */}
       <div className="flex flex-col gap-2">
         <label htmlFor="language" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Idioma por defecto</label>
         <select id="language" value={settings.language} onChange={(e) => updateSettings({ language: e.target.value })}
@@ -298,7 +348,6 @@ function SettingsContent() {
         </select>
       </div>
 
-      {/* Avatar */}
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Foto de Gaia</span>
         <div className="flex items-center gap-3">
@@ -325,7 +374,6 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* Assistant name */}
       <div className="flex flex-col gap-2">
         <label htmlFor="assistant-name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nombre del asistente</label>
         <input id="assistant-name" value={settings.assistantName} onChange={(e) => updateSettings({ assistantName: e.target.value })}
@@ -333,7 +381,6 @@ function SettingsContent() {
           className="min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
       </div>
 
-      {/* API key */}
       <div className="flex flex-col gap-2">
         <label htmlFor="api-key" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">API key de Anthropic</label>
         <div className="relative">
@@ -351,7 +398,6 @@ function SettingsContent() {
   )
 }
 
-// ── COMING SOON OVERLAY ──
 type ComingSoonOverlayProps = { id: string; onClose: () => void }
 export function ComingSoonOverlay({ id, onClose }: ComingSoonOverlayProps) {
   const meta = WINDOW_REGISTRY[id]
