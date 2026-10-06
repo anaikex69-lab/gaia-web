@@ -237,7 +237,7 @@ export function GaiaChat({ micOn }: { micOn: boolean }) {
     }
   }
 
-  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", fable: "Fable 5", gpt_oss: "GPT-OSS 120B", llama: "Llama 70B", llama_fast: "Llama 8B" }
+  const modelLabel: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", fable: "Fable 5", gpt_oss: "GPT-OSS 120B" }
   const showStats = sessionUsage.messages > 0
 
   return (

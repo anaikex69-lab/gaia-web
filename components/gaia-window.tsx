@@ -240,7 +240,7 @@ function UsageContent() {
       </section>
 
       <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
-        Los costos son una estimación. Precio: Haiku $0.80/$4.00 · Sonnet $3.00/$15.00 por millón de tokens.
+        Los costos son una estimación. Precio por millón de tokens (entrada/salida): Haiku $1/$5 · Sonnet $3/$15 · Opus $5/$25 · Fable $10/$50 · GPT-OSS $0.15/$0.75.
       </p>
     </div>
   )
@@ -252,8 +252,6 @@ const MODELS = [
   { id: "opus", name: "Claude Opus", hint: "Máxima capacidad" },
   { id: "fable", name: "Claude Fable 5", hint: "Frontier · más poderoso" },
   { id: "gpt_oss", name: "GPT-OSS 120B", hint: "Groq · económico · buena calidad" },
-  { id: "llama", name: "Llama 3.1 70B", hint: "Groq · gratis · rápido" },
-  { id: "llama_fast", name: "Llama 3.1 8B", hint: "Groq · gratis · ultrarrápido" },
 ]
 const RESPONSE_MODES = [
   { id: "casual", label: "Casual" },

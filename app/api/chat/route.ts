@@ -192,18 +192,37 @@ const buildMessages = (history: { role: string; content: string }[]) => {
   return result
 }
 
+// ─── MODELOS ────────────────────────────────────────────────────────────
+// Las llaves (haiku, sonnet, opus, fable, llama, llama_fast, gpt_oss) son las
+// que manda el frontend, así que NO se renombran. Lo que cambia es a qué
+// modelo real apuntan.
+//
+// - llama y llama_fast: Groq apagó Llama 3.1/3.3, así que quedan como alias
+//   hacia GPT-OSS (120B y 20B). Los botones del frontend aún dicen "Llama".
 const VALID_MODELS: Record<string, string> = {
   haiku: "claude-haiku-4-5-20251001",
-  sonnet: "claude-sonnet-4-6",
-  opus: "claude-sonnet-4-6",
-  fable: "claude-fable-5-20260609",
-  llama: "llama-3.1-70b-versatile",
-  llama_fast: "llama-3.1-8b-instant",
+  sonnet: "claude-sonnet-5-5",
+  opus: "claude-opus-5-5",
+  fable: "claude-fable-5-1",
+  llama: "openai/gpt-oss-120b",
+  llama_fast: "openai/gpt-oss-20b",
   gpt_oss: "openai/gpt-oss-120b",
 }
 
 const GROQ_MODELS = new Set(["llama", "llama_fast", "gpt_oss"])
-const GROQ_FREE_MODELS = new Set(["llama", "llama_fast"])
+
+// Precios estimados en USD por 1M de tokens. Solo sirven para el contador de
+// gasto de Gaia. Verifícalos de vez en cuando en las páginas de precios de
+// Anthropic y Groq, porque cambian.
+const PRICE_PER_MILLION: Record<string, { in: number; out: number }> = {
+  haiku: { in: 1, out: 5 },
+  sonnet: { in: 3, out: 15 },
+  opus: { in: 5, out: 25 },
+  fable: { in: 10, out: 50 },
+  llama: { in: 0.15, out: 0.75 },
+  llama_fast: { in: 0.075, out: 0.3 },
+  gpt_oss: { in: 0.15, out: 0.75 },
+}
 
 // Genera título automático para el chat basado en el primer mensaje
 const generateChatTitle = async (message: string): Promise<string> => {
@@ -307,8 +326,10 @@ export async function POST(req: NextRequest) {
       messages[messages.length - 1].content = userContent
     }
 
+    // Límite de salida para Claude. Subido un poco porque los modelos nuevos
+    // de Claude usan un tokenizador que genera ~30% más tokens por el mismo texto.
     const isShort = message.length < 80 && !/explica|describe|escribe|redacta|lista|resume|analiza|ayúdame|ayudame/.test(message.toLowerCase())
-    const maxTokens = (fileContext || imageBase64) ? 700 : (isShort ? 300 : 500)
+    const maxTokens = (fileContext || imageBase64) ? 900 : (isShort ? 400 : 700)
 
     const systemBlocksForAPI = [
       { type: "text" as const, text: GAIA_SYSTEM_PROMPT, cache_control: { type: "ephemeral" as const } },
@@ -329,7 +350,7 @@ export async function POST(req: NextRequest) {
     let outputTokens: number
 
     if (GROQ_MODELS.has(model)) {
-      // Usar Groq (gratis)
+      // ─── Groq ───
       const systemText = GAIA_SYSTEM_PROMPT + (dynamicSection.trim() ? "\n\n" + dynamicSection : "")
       const groqMessages = [
         { role: "system" as const, content: systemText },
@@ -338,35 +359,67 @@ export async function POST(req: NextRequest) {
           content: typeof m.content === "string" ? m.content : message,
         }))
       ]
-      const groqResponse = await groq.chat.completions.create({
+
+      // GPT-OSS es un modelo de razonamiento: los tokens que gasta pensando
+      // cuentan dentro del límite de salida. Con 300-500 se los comía todos
+      // y la respuesta salía cortada. Por eso aquí el techo es 4000, aparte
+      // del maxTokens de Claude. Gaia igual responde corto porque el system
+      // prompt le pide máximo 3-4 líneas.
+      const groqParams: any = {
         model: selectedModel,
         messages: groqMessages,
-        max_tokens: maxTokens,
+        max_completion_tokens: 4000,
         temperature: temperature,
-      })
-      reply = groqResponse.choices[0]?.message?.content || "Sin respuesta"
+      }
+      if (selectedModel.startsWith("openai/gpt-oss")) {
+        groqParams.reasoning_effort = "medium"
+      }
+
+      // Se tipa como any para que el build de Vercel no falle si la versión
+      // instalada de groq-sdk aún no conoce reasoning_effort o max_completion_tokens.
+      const groqResponse: any = await groq.chat.completions.create(groqParams)
+      const choice = groqResponse.choices?.[0]
+
+      if (choice?.finish_reason === "length") {
+        console.warn("[GAIA-WEB] Groq cortó por límite de tokens (finish_reason=length)")
+      }
+
+      reply = choice?.message?.content?.trim() || "Se me cortó la respuesta. Intenta de nuevo."
       inputTokens = groqResponse.usage?.prompt_tokens || 0
       outputTokens = groqResponse.usage?.completion_tokens || 0
     } else {
-      // Usar Claude (Anthropic)
+      // ─── Claude (Anthropic) ───
+      // Fable piensa siempre y esos tokens cuentan en max_tokens, así que
+      // se le da más margen para que no se quede sin espacio para responder.
+      const claudeMaxTokens = model === "fable" ? 4000 : maxTokens
+
       const response = await anthropic.messages.create({
         model: selectedModel,
-        max_tokens: maxTokens,
+        max_tokens: claudeMaxTokens,
         system: systemBlocksForAPI,
         messages: messages as Anthropic.MessageParam[],
       })
-      reply = (response.content[0] as Anthropic.TextBlock).text
+
+      // Toma solo los bloques de texto: si el modelo devuelve un bloque de
+      // "thinking" primero, content[0] ya no sería la respuesta.
+      reply = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim() || "Sin respuesta"
+
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[GAIA-WEB] Claude cortó por límite de tokens (stop_reason=max_tokens)")
+      }
+
       inputTokens = response.usage.input_tokens
       outputTokens = response.usage.output_tokens
     }
 
     reply = await extractAndSaveMemory(reply, category)
 
-    const cost = GROQ_FREE_MODELS.has(model)
-      ? "0.00000" // Llama es gratis en Groq
-      : GROQ_MODELS.has(model)
-        ? ((inputTokens * 0.00000015) + (outputTokens * 0.00000075)).toFixed(5) // gpt-oss-120b
-        : ((inputTokens * 0.000003) + (outputTokens * 0.000015)).toFixed(5) // Claude
+    const price = PRICE_PER_MILLION[model] ?? PRICE_PER_MILLION.sonnet
+    const cost = ((inputTokens * price.in + outputTokens * price.out) / 1_000_000).toFixed(5)
 
     console.log(`[GAIA-WEB] ${inputTokens}in/${outputTokens}out | $${cost} | ${category} | ${selectedModel}`)
 
