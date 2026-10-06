@@ -28,7 +28,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
   const statusRef = useRef<CallStatus>("listening")
   const recognitionRef = useRef<any>(null)
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const finalTranscriptRef = useRef("")
   const isMountedRef = useRef(true)
@@ -64,10 +63,6 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     if (loopGuardResetTimerRef.current) clearTimeout(loopGuardResetTimerRef.current)
     try { window.speechSynthesis.cancel() } catch {}
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
     onExit()
   }, [onExit])
 
@@ -176,12 +171,13 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
     startListeningRef.current = startListening
   }, [startListening])
 
-  // ── Voz de respaldo: Web Speech API (gratis, local, sin límites) ──
-  const speakWithBrowserVoice = useCallback((text: string) => {
-    setDebugError("usando voz del navegador (respaldo)")
+  // ── Voz: Web Speech API del navegador (gratis, local, sin límites) ──
+  const speak = useCallback((text: string) => {
+    setStatusBoth("speaking")
+    setDebugError("")
     try {
       if (!("speechSynthesis" in window)) {
-        setDebugError("este navegador no soporta speechSynthesis")
+        setDebugError("este navegador no soporta voz")
         startListeningRef.current()
         return
       }
@@ -204,7 +200,7 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
       const resumeOnce = (reason: string) => {
         if (resumed) return
         resumed = true
-        setDebugError(`voz navegador terminó (${reason})`)
+        if (reason.startsWith("onerror")) setDebugError(`voz: ${reason}`)
         if (!isMountedRef.current) return
         startListeningRef.current()
       }
@@ -231,54 +227,10 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
         window.speechSynthesis.resume()
       }, 5000)
     } catch (err: any) {
-      setDebugError(`catch voz navegador: ${err?.message || String(err)}`)
+      setDebugError(`error de voz: ${err?.message || String(err)}`)
       if (isMountedRef.current) startListeningRef.current()
     }
-  }, [settings.language])
-
-  const speak = useCallback(async (text: string) => {
-    setStatusBoth("speaking")
-    setDebugError("intentando ElevenLabs...")
-    try {
-      const res = await fetch("/api/voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      })
-      if (!res.ok) {
-        setDebugError(`ElevenLabs falló (${res.status}), usando respaldo`)
-        speakWithBrowserVoice(text)
-        return
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-
-      const audio = audioRef.current
-      if (!audio) {
-        setDebugError("sin audio precreado, usando respaldo")
-        speakWithBrowserVoice(text)
-        return
-      }
-
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        if (!isMountedRef.current) return
-        startListeningRef.current()
-      }
-      audio.onerror = () => {
-        URL.revokeObjectURL(url)
-        setDebugError("audio.onerror, usando respaldo")
-        speakWithBrowserVoice(text)
-      }
-
-      audio.src = url
-      await audio.play()
-      setDebugError("ElevenLabs reproduciendo OK")
-    } catch (err: any) {
-      setDebugError(`catch ElevenLabs: ${err?.message || String(err)}, usando respaldo`)
-      speakWithBrowserVoice(text)
-    }
-  }, [setStatusBoth, speakWithBrowserVoice])
+  }, [settings.language, setStatusBoth])
 
   const sendToGaiaRef = useRef<(text: string) => void>(() => {})
 
@@ -333,19 +285,12 @@ export function GaiaCallMode({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     isMountedRef.current = true
 
-    // Desbloquea el audio en iOS Safari para ElevenLabs
-    const audio = new Audio()
-    audio.playsInline = true
-    audioRef.current = audio
-    audio
-      .play()
-      .catch(() => {})
-      .finally(() => {
-        audio.pause()
-      })
-
-    // Precargar voces del navegador (en iOS a veces tardan en poblarse)
+    // Desbloquea la voz en iOS Safari: una utterance vacía lanzada desde el
+    // toque que abrió el modo llamada permite que las siguientes suenen.
     try {
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(""))
+      // Precargar voces del navegador (en iOS a veces tardan en poblarse)
       window.speechSynthesis.getVoices()
     } catch {}
 
