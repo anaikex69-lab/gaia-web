@@ -39,6 +39,7 @@ CONVERSACIÓN:
 
 RESPUESTAS:
 - Máximo 3-4 líneas. Sin datos extra. Sin emojis. Sin formatos raros.
+- EXCEPCIÓN: si Luis pide explícitamente algo largo (una historia, una explicación a fondo, un texto, un guion), escribe todo lo que haga falta, hasta unos 2000 caracteres. En párrafos corridos, sin viñetas, para que se pueda leer en voz alta.
 - Una sola pregunta por respuesta si es necesario. Solo una.
 - Usa el perfil de Luis como contexto de fondo — no lo menciones a menos que sea relevante.
 
@@ -193,23 +194,17 @@ const buildMessages = (history: { role: string; content: string }[]) => {
 }
 
 // ─── MODELOS ────────────────────────────────────────────────────────────
-// Las llaves (haiku, sonnet, opus, fable, llama, llama_fast, gpt_oss) son las
-// que manda el frontend, así que NO se renombran. Lo que cambia es a qué
-// modelo real apuntan.
-//
-// - llama y llama_fast: Groq apagó Llama 3.1/3.3, así que quedan como alias
-//   hacia GPT-OSS (120B y 20B). Los botones del frontend aún dicen "Llama".
+// Las llaves (haiku, sonnet, opus, fable, gpt_oss) son las que manda el
+// frontend. Si llega una llave desconocida, se usa Sonnet.
 const VALID_MODELS: Record<string, string> = {
   haiku: "claude-haiku-4-5-20251001",
   sonnet: "claude-sonnet-5-5",
   opus: "claude-opus-5-5",
   fable: "claude-fable-5-1",
-  llama: "openai/gpt-oss-120b",
-  llama_fast: "openai/gpt-oss-20b",
   gpt_oss: "openai/gpt-oss-120b",
 }
 
-const GROQ_MODELS = new Set(["llama", "llama_fast", "gpt_oss"])
+const GROQ_MODELS = new Set(["gpt_oss"])
 
 // Precios estimados en USD por 1M de tokens. Solo sirven para el contador de
 // gasto de Gaia. Verifícalos de vez en cuando en las páginas de precios de
@@ -219,8 +214,6 @@ const PRICE_PER_MILLION: Record<string, { in: number; out: number }> = {
   sonnet: { in: 3, out: 15 },
   opus: { in: 5, out: 25 },
   fable: { in: 10, out: 50 },
-  llama: { in: 0.15, out: 0.75 },
-  llama_fast: { in: 0.075, out: 0.3 },
   gpt_oss: { in: 0.15, out: 0.75 },
 }
 
@@ -329,7 +322,8 @@ export async function POST(req: NextRequest) {
     // Límite de salida para Claude. Subido un poco porque los modelos nuevos
     // de Claude usan un tokenizador que genera ~30% más tokens por el mismo texto.
     const isShort = message.length < 80 && !/explica|describe|escribe|redacta|lista|resume|analiza|ayúdame|ayudame/.test(message.toLowerCase())
-    const maxTokens = (fileContext || imageBase64) ? 900 : (isShort ? 400 : 700)
+    const wantsLong = /largo|larga|extens[oa]|detallad[oa]|a fondo|con detalle|a detalle|cu[eé]ntame|cuento|historia|explica(me)? todo/.test(message.toLowerCase())
+    const maxTokens = wantsLong ? 1500 : (fileContext || imageBase64) ? 900 : (isShort ? 400 : 700)
 
     const systemBlocksForAPI = [
       { type: "text" as const, text: GAIA_SYSTEM_PROMPT, cache_control: { type: "ephemeral" as const } },
